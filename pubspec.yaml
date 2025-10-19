@@ -1,0 +1,36 @@
+name: institutional_lms_cms_hub
+description: A Flutter student portal application with role-based access.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.3.0
+  flutter: ">=3.19.0"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_fonts: ^6.2.1
+  fl_chart: ^1.1.0
+  http: ^1.2.2
+  shared_preferences: ^2.2.3
+  table_calendar: ^3.1.2
+  flutter_typeahead: ^5.2.0
+  url_launcher: ^6.3.0
+  file_picker: ^10.3.2
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  image_cropper: ^11.0.0
+  image_cropper_for_web: ^7.0.0
+  crop_your_image: ^2.0.0
+  image: ^4.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
