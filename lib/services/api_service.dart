@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
+import 'package:intl/intl.dart';
 import 'dart:developer' show log;
 
 /// API Service class for handling all HTTP requests to the PHP backend
@@ -33,6 +34,127 @@ class ApiService {
     }
     // Physical devices on same Wi‑Fi: use your PC's LAN IP
     return 'http://192.168.18.30/backend/api.php';
+  }
+
+  static Future<Map<String, dynamic>> saveClassQuiz({
+    required int classId,
+    required int subjectId,
+    String? title,
+    String? topic,
+    DateTime? scheduledAt,
+    String status = 'scheduled',
+    int? number,
+    int? id,
+    int? planItemId,
+    int? teacherAssignmentId,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'class_id': classId,
+        'subject_id': subjectId,
+        if (title != null) 'title': title,
+        if (topic != null) 'topic': topic,
+        if (scheduledAt != null) 'deadline': _formatDateTime(scheduledAt),
+        'status': status,
+        if (number != null) 'number': number,
+        if (id != null) 'id': id,
+        if (planItemId != null) 'plan_item_id': planItemId,
+        if (teacherAssignmentId != null) 'teacher_assignment_id': teacherAssignmentId,
+      };
+      final response = await _makeRequest(
+        'class_quiz_save',
+        method: 'POST',
+        body: body,
+      );
+      return _parseResponse(response);
+    } catch (e) {
+      throw Exception('Failed to save quiz: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> saveClassAssignment({
+    required int classId,
+    required int subjectId,
+    String? title,
+    String? description,
+    DateTime? deadline,
+    String status = 'scheduled',
+    int? number,
+    int? id,
+    int? planItemId,
+    int? teacherAssignmentId,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'class_id': classId,
+        'subject_id': subjectId,
+        if (title != null) 'title': title,
+        if (description != null) 'description': description,
+        if (deadline != null) 'deadline': _formatDateTime(deadline),
+        'status': status,
+        if (number != null) 'number': number,
+        if (id != null) 'id': id,
+        if (planItemId != null) 'plan_item_id': planItemId,
+        if (teacherAssignmentId != null) 'teacher_assignment_id': teacherAssignmentId,
+      };
+      final response = await _makeRequest(
+        'class_assignment_save',
+        method: 'POST',
+        body: body,
+      );
+      return _parseResponse(response);
+    } catch (e) {
+      throw Exception('Failed to save assignment: $e');
+    }
+  }
+
+  /// Fetch assessments for a class
+  static Future<Map<String, dynamic>> getClassAssessments({
+    required int classId,
+    required int subjectId,
+  }) async {
+    try {
+      final endpoint = 'class_assessments&class_id=$classId&subject_id=$subjectId';
+      final response = await _makeRequest(endpoint);
+      final result = _parseResponse(response);
+      if (result['success'] == true) {
+        return Map<String, dynamic>.from(result);
+      }
+      throw Exception(result['error'] ?? 'Failed to fetch assessments');
+    } catch (e) {
+      throw Exception('Failed to fetch assessments: $e');
+    }
+  }
+
+  /// Update assessment completion/coverage status
+  static Future<Map<String, dynamic>> updateAssessmentCompletion({
+    required String kind, // 'assignment' | 'quiz'
+    required int classId,
+    required int subjectId,
+    int? planItemId,
+    int? number,
+    String status = 'covered',
+    String? completedAt,
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'kind': kind,
+        'class_id': classId,
+        'subject_id': subjectId,
+        if (planItemId != null) 'plan_item_id': planItemId,
+        if (number != null) 'number': number,
+        'status': status,
+        if (completedAt != null) 'completed_at': completedAt,
+      };
+      final response = await _makeRequest(
+        'assessment_completion',
+        method: 'PUT',
+        body: body,
+      );
+      return _parseResponse(response);
+    } catch (e) {
+      throw Exception('Failed to update assessment completion: $e');
+    }
   }
 
   static Future<Map<String, dynamic>> upsertFirstTermMarks({
@@ -230,8 +352,11 @@ class ApiService {
   }
 
   static void _dlog(String message) {
-    // ignore: avoid_print
-    print('[ApiService][${DateTime.now().toIso8601String()}] $message');
+    log('[ApiService] $message');
+  }
+
+  static String _formatDateTime(DateTime value) {
+    return DateFormat('yyyy-MM-dd HH:mm:ss').format(value);
   }
 
   /// List previous class attendance dates with counts (Teacher)
@@ -889,8 +1014,6 @@ class ApiService {
     String? singleDate,
     String? rangeStart,
     String? rangeEnd,
-    String? assignmentDeadline,
-    String? quizDeadline,
     String? status,
   }) async {
     try {
@@ -904,8 +1027,6 @@ class ApiService {
         if (singleDate != null) 'single_date': singleDate,
         if (rangeStart != null) 'range_start': rangeStart,
         if (rangeEnd != null) 'range_end': rangeEnd,
-        if (assignmentDeadline != null) 'assignment_deadline': assignmentDeadline,
-        if (quizDeadline != null) 'quiz_deadline': quizDeadline,
         if (status != null) 'status': status,
       };
       final response = await _makeRequest(
@@ -1018,7 +1139,6 @@ class ApiService {
           .join('&');
       url += '&$queryParams';
     }
-    print('🔍 [API] Making request to URL: $url');
     log('Making request to URL: $url');
     final uri = Uri.parse(url);
 
@@ -1072,18 +1192,15 @@ class ApiService {
       }
       const lanIp = '192.168.18.30';
       final fallback = uri.replace(host: lanIp);
-      print(
-          '🌐 [API] Error contacting $host (${e.runtimeType}). Retrying with LAN IP: $lanIp -> $fallback');
+      log('Error contacting $host (${e.runtimeType}). Retrying with LAN IP: $lanIp -> $fallback');
       final response = await send(fallback);
-      print('🔁 [API] Fallback response status: ${response.statusCode}');
+      log('Fallback response status: ${response.statusCode}');
       return response;
     }
 
     try {
       final response = await send(uri);
-      print('🔍 [API] Response status: ${response.statusCode}');
       log('Response status: ${response.statusCode}');
-      print('🔍 [API] Response body: ${response.body}');
       log('Response body: ${response.body}');
       return response;
     } on SocketException catch (e) {
@@ -1448,8 +1565,8 @@ class ApiService {
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('File upload response status: ${response.statusCode}');
-      print('File upload response body: ${response.body}');
+      log('File upload response status: ${response.statusCode}');
+      log('File upload response body: ${response.body}');
       return _parseResponse(response);
     } catch (e) {
       _dlog('submitAssignmentFile error: $e');
@@ -1498,8 +1615,8 @@ class ApiService {
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('Bytes upload response status: ${response.statusCode}');
-      print('Bytes upload response body: ${response.body}');
+      log('Bytes upload response status: ${response.statusCode}');
+      log('Bytes upload response body: ${response.body}');
       return _parseResponse(response);
     } catch (e) {
       _dlog('submitAssignmentBytes error: $e');
@@ -1512,6 +1629,7 @@ class ApiService {
     int? classId,
     int? subjectId,
     int? assignmentNumber,
+    int? studentUserId,
   }) async {
     try {
       final body = {
@@ -2308,27 +2426,14 @@ class ApiService {
     String? fileName,
     List<int>? fileBytes,
   }) async {
-    print('[DEBUG API] createChallan called with:');
-    print('[DEBUG API] - studentUserId: $studentUserId');
-    print('[DEBUG API] - title: $title');
-    print('[DEBUG API] - category: $category');
-    print('[DEBUG API] - amount: $amount');
-    print('[DEBUG API] - dueDate: $dueDate');
-    print('[DEBUG API] - filePath: $filePath');
-    print('[DEBUG API] - fileName: $fileName');
-    print('[DEBUG API] - fileBytes length: ${fileBytes?.length}');
-
     final uri = Uri.parse('$baseUrl?endpoint=challan_create');
-    print('[DEBUG API] Request URI: $uri');
 
     final request = http.MultipartRequest('POST', uri);
 
     // Auth header
     final token = await _getToken();
-    print('[DEBUG API] Token available: ${token != null}');
     if (token != null) {
       request.headers['Authorization'] = 'Bearer $token';
-      print('[DEBUG API] Authorization header set');
     }
 
     // Fields
@@ -2340,36 +2445,35 @@ class ApiService {
       request.fields['due_date'] = dueDate;
     }
 
-    print('[DEBUG API] Request fields: ${request.fields}');
+    log('[DEBUG API] Request fields: ${request.fields}');
 
     // File (always use bytes for web compatibility)
     if (fileBytes != null && fileBytes.isNotEmpty && fileName != null) {
-      print(
-          '[DEBUG API] Adding file from bytes: ${fileBytes.length} bytes, name: $fileName');
+      log('[DEBUG API] Adding file from bytes: ${fileBytes.length} bytes, name: $fileName');
       final mf =
           http.MultipartFile.fromBytes('file', fileBytes, filename: fileName);
       request.files.add(mf);
-      print('[DEBUG API] File added from bytes');
+      log('[DEBUG API] File added from bytes');
     } else if (filePath != null && filePath.isNotEmpty && !kIsWeb) {
       // Only use fromPath on non-web platforms
-      print('[DEBUG API] Adding file from path: $filePath');
+      log('[DEBUG API] Adding file from path: $filePath');
       final mf = await http.MultipartFile.fromPath('file', filePath,
           filename: fileName ?? filePath.split('/').last.split('\\').last);
       request.files.add(mf);
-      print('[DEBUG API] File added from path');
+      log('[DEBUG API] File added from path');
     } else {
-      print('[DEBUG API] No file to upload');
+      log('[DEBUG API] No file to upload');
     }
 
-    print('[DEBUG API] Sending request...');
+    log('[DEBUG API] Sending request...');
     final streamed = await request.send();
-    print('[DEBUG API] Response status: ${streamed.statusCode}');
+    log('[DEBUG API] Response status: ${streamed.statusCode}');
 
     final response = await http.Response.fromStream(streamed);
-    print('[DEBUG API] Response body: ${response.body}');
+    log('[DEBUG API] Response body: ${response.body}');
 
     final result = _parseResponse(response);
-    print('[DEBUG API] Parsed result: $result');
+    log('[DEBUG API] Parsed result: $result');
     return result;
   }
 
@@ -2404,7 +2508,6 @@ class ApiService {
   /// Get user profile picture URL
   static Future<String?> getUserProfilePictureUrl(int userId) async {
     try {
-      print('🔍 [API] Fetching profile picture URL for user: $userId');
       log('Fetching profile picture URL for user: $userId');
       // Backend expects POST for this endpoint. Keep user_id as query param.
       final response = await _makeRequest(
@@ -2414,21 +2517,16 @@ class ApiService {
       );
       final result = _parseResponse(response);
 
-      print('🔍 [API] Profile picture API response: $result');
       log('Profile picture API response: $result');
 
       if (result['success'] == true) {
         final url = result['profile_picture_url'];
-        print('✅ [API] Profile picture URL found: $url');
         log('Profile picture URL found: $url');
         return url;
       } else {
-        print('⚠️ [API] No profile picture found: ${result['error']}');
-        log('No profile picture found: ${result['error']}');
         return null; // No profile picture uploaded
       }
     } catch (e) {
-      print('❌ [API] Error fetching profile picture URL: $e');
       log('Error fetching profile picture URL: $e');
       return null;
     }
@@ -2493,8 +2591,7 @@ class ApiService {
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
-      _dlog(
-          'Upload payment proof response: ${response.statusCode} ${response.body}');
+      log('Upload payment proof response: ${response.statusCode} ${response.body}');
 
       final result = _parseResponse(response);
       if (result['success'] != true) {
@@ -2503,7 +2600,7 @@ class ApiService {
 
       return result;
     } catch (e) {
-      _dlog('Upload payment proof error: $e');
+      log('Upload payment proof error: $e');
       rethrow;
     }
   }
@@ -2536,24 +2633,13 @@ class ApiService {
   /// Chat message send to backend (groq_router.php)
   static Future<String> sendMessage(String userMessage) async {
     try {
-      // Detect platform to decide which URL to use
-      final String apiUrl;
-      if (kIsWeb) {
-        apiUrl = "http://localhost/backend/groq_router.php";
-      } else {
-        apiUrl = "http://10.0.2.2/backend/groq_router.php";
-      }
-      final url = Uri.parse(apiUrl);
-
-      print('Sending chat request to: $url');
-      print('Message: $userMessage');
-
+      final apiUrl = '$baseUrl?endpoint=chat_assistant';
       try {
         final client = http.Client();
 
         final response = await http
             .post(
-          url,
+          Uri.parse(apiUrl),
           headers: {
             'Content-Type': 'application/json; charset=UTF-8',
             'Accept': 'application/json',
@@ -2571,8 +2657,8 @@ class ApiService {
           client.close();
         });
 
-        print('Chat API Response Status: ${response.statusCode}');
-        print('Chat API Response Body: ${response.body}');
+        log('Chat API Response Status: ${response.statusCode}');
+        log('Chat API Response Body: ${response.body}');
 
         if (response.statusCode == 200) {
           final responseData = jsonDecode(response.body);
@@ -2592,20 +2678,20 @@ class ApiService {
           return 'Server error: ${response.statusCode} - ${response.body}';
         }
       } on SocketException catch (e) {
-        print('SocketException: $e');
+        log('SocketException: $e');
         return 'Failed to connect to the server. Please check your internet connection.';
       } on FormatException catch (e) {
-        print('FormatException: $e');
+        log('FormatException: $e');
         return 'Invalid response from server. Please try again.';
       } on http.ClientException catch (e) {
-        print('ClientException: $e');
+        log('ClientException: $e');
         return 'Failed to connect to the server. Please check your connection.';
       } catch (e) {
-        print('Unexpected error: $e');
+        log('Unexpected error: $e');
         return 'An unexpected error occurred. Please try again.';
       }
     } catch (e) {
-      print('Outer exception in sendMessage: $e');
+      log('Outer exception in sendMessage: $e');
       return 'Failed to process your request. Please try again.';
     }
   }

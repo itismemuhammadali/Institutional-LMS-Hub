@@ -1,3 +1,5 @@
+import 'dart:developer' show log;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
@@ -44,6 +46,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return role == 'student';
   }
 
+  void _log(String message) {
+    log('[ProfileScreen] $message');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -88,53 +94,39 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadProfilePicture(int userId) async {
     try {
-      print('🖼️ [PROFILE SCREEN] ===== LOADING PROFILE PICTURE =====');
-      print('🖼️ [PROFILE SCREEN] User ID: $userId');
-      print(
-          '🖼️ [PROFILE SCREEN] Current _profilePictureUrl: $_profilePictureUrl');
+      _log('Loading profile picture for user $userId (current: $_profilePictureUrl)');
 
       // First check if profile picture URL is in the profile data
       String? profilePictureUrl;
 
       if (_userProfile != null) {
-        print(
-            '🖼️ [PROFILE SCREEN] Profile data available: ${_userProfile!.keys.toList()}');
+        _log('Profile data keys: ${_userProfile!.keys.toList()}');
         // Check common field names for profile picture URL
         profilePictureUrl = _userProfile!['profile_picture_url'] ??
             _userProfile!['avatar_url'] ??
             _userProfile!['profile_image_url'] ??
             _userProfile!['picture_url'];
-        print(
-            '🖼️ [PROFILE SCREEN] Profile picture URL from profile data: $profilePictureUrl');
+        _log('Profile picture URL from profile data: $profilePictureUrl');
       } else {
-        print('🖼️ [PROFILE SCREEN] No profile data available');
+        _log('No profile data available');
       }
 
       // If not found in profile data, fetch it separately
       if (profilePictureUrl == null || profilePictureUrl.isEmpty) {
-        print(
-            '🔄 [PROFILE SCREEN] No URL in profile data, fetching from API...');
+        _log('No profile picture URL in profile data; fetching from API');
         try {
-          print(
-              '🔄 [PROFILE SCREEN] Calling ApiService.getUserProfilePictureUrl($userId)...');
+          _log('Calling ApiService.getUserProfilePictureUrl($userId)');
           profilePictureUrl = await ApiService.getUserProfilePictureUrl(userId);
-          print('✅ [PROFILE SCREEN] API call successful!');
-          print(
-              '🖼️ [PROFILE SCREEN] Profile picture URL from API: $profilePictureUrl');
+          _log('API returned profile picture URL: $profilePictureUrl');
         } catch (apiError) {
-          print('❌ [PROFILE SCREEN] API call failed: $apiError');
+          _log('API call failed: $apiError');
           profilePictureUrl = null;
         }
       } else {
-        print(
-            '✅ [PROFILE SCREEN] Found URL in profile data, skipping API call');
+        _log('Using profile data URL, skipping API call');
       }
 
-      print(
-          '🖼️ [PROFILE SCREEN] Final profile picture URL: $profilePictureUrl');
-      print('🖼️ [PROFILE SCREEN] URL is null: ${profilePictureUrl == null}');
-      print(
-          '🖼️ [PROFILE SCREEN] URL is empty: ${profilePictureUrl?.isEmpty ?? true}');
+      _log('Final profile picture URL: $profilePictureUrl');
 
       if (mounted) {
         setState(() {
@@ -147,18 +139,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _profilePictureUrl = profilePictureUrl;
           }
         });
-        print(
-            '✅ [PROFILE SCREEN] Profile picture URL set in state: $_profilePictureUrl');
-        print('✅ [PROFILE SCREEN] State updated successfully!');
+        _log('Profile picture state updated: $_profilePictureUrl');
       } else {
-        print('⚠️ [PROFILE SCREEN] Widget not mounted, cannot update state');
+        _log('Widget not mounted; skipping profile picture state update');
       }
 
-      print(
-          '🖼️ [PROFILE SCREEN] ===== PROFILE PICTURE LOADING COMPLETED =====');
     } catch (e) {
-      print('❌ [PROFILE SCREEN] Error loading profile picture: $e');
-      print('❌ [PROFILE SCREEN] Stack trace: ${StackTrace.current}');
+      _log('Error loading profile picture: $e');
       if (mounted) {
         setState(() {
           _profilePictureUrl = null;
@@ -470,7 +457,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     child: Icon(
                                       Icons.person,
                                       size: 80,
-                                      color: accentBlue.withOpacity(0.7),
+                                      color: accentBlue.withValues(alpha: 0.7),
                                     ),
                                   ),
                       ),
@@ -708,8 +695,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               fileBytes: croppedBytes!,
                             );
                             if (res['success'] == true) {
-                              print(
-                                  '✅ [PROFILE SCREEN] Upload successful! Response: $res');
+                              _log('Profile picture upload successful');
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -724,30 +710,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               if (context.mounted) Navigator.of(context).pop();
 
                               // Refresh profile picture in this screen
-                              print(
-                                  '🔄 [PROFILE SCREEN] Refreshing profile picture after upload...');
+                              _log('Refreshing profile picture after upload');
                               final userId =
                                   await ApiService.getCurrentUserId();
                               if (userId != null) {
-                                print(
-                                    '🔄 [PROFILE SCREEN] User ID: $userId, calling _loadProfilePicture...');
+                                _log('Reloading profile picture for user $userId');
                                 await _loadProfilePicture(userId);
-                                print(
-                                    '✅ [PROFILE SCREEN] Profile picture refresh completed');
+                                _log('Profile picture refresh completed');
                               } else {
-                                print(
-                                    '❌ [PROFILE SCREEN] No user ID found for refresh');
+                                _log('No user ID found for refresh');
                               }
 
                               // Call the callback to refresh profile picture in home screen
-                              print(
-                                  '🔄 [PROFILE SCREEN] Calling home screen callback...');
+                              _log('Invoking home screen profile refresh callback');
                               widget.onProfileUpdated?.call();
-                              print(
-                                  '✅ [PROFILE SCREEN] Home screen callback completed');
+                              _log('Profile refresh callback completed');
                             } else {
-                              print(
-                                  '❌ [PROFILE SCREEN] Upload failed: ${res['error']}');
+                              _log('Profile picture upload failed: ${res['error']}');
                               throw Exception(res['error'] ?? 'Upload failed');
                             }
                           } catch (e) {
@@ -909,7 +888,7 @@ Widget _buildProfileHeader() {
                           _user?['email']?.toString() ?? _v(_userProfile?['email']),
                           style: GoogleFonts.inter(
                             fontSize: 14,
-                            color: isDark ? onSurface.withOpacity(0.7) : accentBlue.withValues(alpha: 0.8),
+                            color: isDark ? onSurface.withValues(alpha: 0.7) : accentBlue.withValues(alpha: 0.8),
                           ),
                           softWrap: true,
                         ),
@@ -918,7 +897,7 @@ Widget _buildProfileHeader() {
                           _isAdminLike() ? 'Admin' : 'Class: ${_v(_userProfile?['class'])}',
                           style: GoogleFonts.inter(
                             fontSize: 14,
-                            color: isDark ? onSurface.withOpacity(0.7) : accentBlue.withValues(alpha: 0.8),
+                            color: isDark ? onSurface.withValues(alpha: 0.7) : accentBlue.withValues(alpha: 0.8),
                           ),
                           softWrap: true,
                         ),
@@ -1003,7 +982,7 @@ Widget _buildProfileHeader() {
                         : 'Roll No: ${_v(_userProfile?['roll_number'])}',
                     style: GoogleFonts.inter(
                       fontSize: ResponsiveHelper.getBodySize(context),
-                      color: isDark ? Colors.white.withOpacity(0.7) : accentBlue.withValues(alpha: 0.8),
+                      color: isDark ? Colors.white.withValues(alpha: 0.7) : accentBlue.withValues(alpha: 0.8),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -1013,7 +992,7 @@ Widget _buildProfileHeader() {
                         : 'Class: ${_v(_userProfile?['class'])}',
                     style: GoogleFonts.inter(
                       fontSize: 14,
-                      color: isDark ? Colors.white.withOpacity(0.7) : accentBlue.withValues(alpha: 0.8),
+                      color: isDark ? Colors.white.withValues(alpha: 0.7) : accentBlue.withValues(alpha: 0.8),
                     ),
                   ),
                 ],
@@ -1064,7 +1043,7 @@ BoxDecoration _sectionDecoration() {
     border: Border.all(color: lightBorder, width: 1),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withOpacity(0.04),
+        color: Colors.black.withValues(alpha: 0.04),
         blurRadius: 14,
         offset: const Offset(0, 8),
       ),
@@ -1900,6 +1879,32 @@ Widget _buildAddressInfoSection() {
                 final currentPassword = currentPasswordController.text.trim();
                 final newPassword = newPasswordController.text.trim();
                 final confirmPassword = confirmPasswordController.text.trim();
+
+                if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Please fill in all fields.',
+                        style: GoogleFonts.inter(color: Colors.white),
+                      ),
+                      backgroundColor: const Color(0xFFF97316),
+                    ),
+                  );
+                  return;
+                }
+
+                if (newPassword == currentPassword) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'New password must be different from current password.',
+                        style: GoogleFonts.inter(color: Colors.white),
+                      ),
+                      backgroundColor: const Color(0xFFF97316),
+                    ),
+                  );
+                  return;
+                }
 
                 if (newPassword != confirmPassword) {
                   ScaffoldMessenger.of(context).showSnackBar(

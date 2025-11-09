@@ -32,7 +32,7 @@ class StudentPortalApp extends StatelessWidget {
         onSurface: Color(0xFF1E3A8A),
       ),
       // Subtle global shadow color for light mode widgets
-      shadowColor: Colors.black.withOpacity(0.08),
+      shadowColor: Colors.black.withValues(alpha: 0.08),
       pageTransitionsTheme: const PageTransitionsTheme(
         builders: <TargetPlatform, PageTransitionsBuilder>{
           TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
@@ -59,7 +59,7 @@ class StudentPortalApp extends StatelessWidget {
       cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 6,
-        shadowColor: Colors.black.withOpacity(0.08),
+        shadowColor: Colors.black.withValues(alpha: 0.08),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         margin: const EdgeInsets.symmetric(vertical: 8),
@@ -81,7 +81,7 @@ class StudentPortalApp extends StatelessWidget {
         color: Colors.white,
         elevation: 6,
         textStyle: GoogleFonts.inter(color: const Color(0xFF111827)),
-        shadowColor: Colors.black.withOpacity(0.08),
+        shadowColor: Colors.black.withValues(alpha: 0.08),
       ),
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(

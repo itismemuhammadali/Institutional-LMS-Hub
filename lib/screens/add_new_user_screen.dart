@@ -271,7 +271,7 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
             } else {
               previewWidget = CircleAvatar(
                 radius: 110,
-                backgroundColor: scheme.primary.withOpacity(0.15),
+                backgroundColor: scheme.primary.withValues(alpha: 0.15),
                 child: Icon(Icons.person, size: 100, color: scheme.primary),
               );
             }
@@ -370,7 +370,7 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
           width: 48,
           height: 40,
           decoration: BoxDecoration(
-            color: selected ? Colors.white.withOpacity(0.12) : Colors.transparent,
+            color: selected ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, color: selected ? active : inactive, size: 22),
@@ -1452,8 +1452,8 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
                               builder: (dialogContext) {
                                 final scheme = Theme.of(dialogContext).colorScheme;
                                 const Color dialogPrimary = Color(0xFF1E3A8A);
-                                final Color dialogSecondary = dialogPrimary.withOpacity(0.75);
-                                final Color dialogMuted = dialogPrimary.withOpacity(0.6);
+                                final Color dialogSecondary = dialogPrimary.withValues(alpha: 0.75);
+                                final Color dialogMuted = dialogPrimary.withValues(alpha: 0.6);
                                 TextStyle labelStyle(Color color) => GoogleFonts.inter(color: color, height: 1.35);
                                 return StatefulBuilder(
                                   builder: (context, setDialogState) {
@@ -1616,7 +1616,7 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
                                                     child: ListView.separated(
                                                       shrinkWrap: true,
                                                       itemCount: rows.length,
-                                                      separatorBuilder: (_, __) => Divider(color: dialogPrimary.withOpacity(0.15), height: 1),
+                                                      separatorBuilder: (_, __) => Divider(color: dialogPrimary.withValues(alpha: 0.15), height: 1),
                                                       itemBuilder: (_, index) => buildRow(rows[index]),
                                                     ),
                                                   ),
@@ -1700,8 +1700,8 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
                               builder: (dialogContext) {
                                 final scheme = Theme.of(dialogContext).colorScheme;
                                 const Color dialogPrimary = Color(0xFF1E3A8A);
-                                final Color dialogSecondary = dialogPrimary.withOpacity(0.9);
-                                final Color dialogMuted = dialogPrimary.withOpacity(0.65);
+                                final Color dialogSecondary = dialogPrimary.withValues(alpha: 0.9);
+                                final Color dialogMuted = dialogPrimary.withValues(alpha: 0.65);
                                 TextStyle labelStyle(Color color) => GoogleFonts.inter(color: color, height: 1.35);
 
                                 return StatefulBuilder(
@@ -1845,7 +1845,7 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
                                                     child: ListView.separated(
                                                       shrinkWrap: true,
                                                       itemCount: students.length,
-                                                      separatorBuilder: (_, __) => Divider(color: dialogPrimary.withOpacity(0.15), height: 1),
+                                                      separatorBuilder: (_, __) => Divider(color: dialogPrimary.withValues(alpha: 0.15), height: 1),
                                                       itemBuilder: (_, index) => studentTile(students[index]),
                                                     ),
                                                   ),
@@ -1941,8 +1941,8 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
                               builder: (dialogContext) {
                                 final scheme = Theme.of(dialogContext).colorScheme;
                                 const Color dialogPrimary = Color(0xFF1E3A8A);
-                                final Color dialogSecondary = dialogPrimary.withOpacity(0.9);
-                                final Color dialogMuted = dialogPrimary.withOpacity(0.65);
+                                final Color dialogSecondary = dialogPrimary.withValues(alpha: 0.9);
+                                final Color dialogMuted = dialogPrimary.withValues(alpha: 0.65);
                                 TextStyle labelStyle(Color color) => GoogleFonts.inter(color: color, height: 1.35);
 
                                 return StatefulBuilder(
@@ -2015,7 +2015,7 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
                                                     child: ListView.separated(
                                                       shrinkWrap: true,
                                                       itemCount: students.length,
-                                                      separatorBuilder: (_, __) => Divider(color: dialogPrimary.withOpacity(0.15), height: 1),
+                                                      separatorBuilder: (_, __) => Divider(color: dialogPrimary.withValues(alpha: 0.15), height: 1),
                                                       itemBuilder: (_, index) {
                                                         final student = students[index];
                                                         final displayName = (student['student_name'] ?? student['name'] ?? student['full_name'] ?? 'Student').toString();
@@ -2664,7 +2664,7 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
                             margin: const EdgeInsets.only(bottom: 12, top: 10),
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              border: Border.all(color: scheme.primary.withOpacity(0.2), width: 2),
+                              border: Border.all(color: scheme.primary.withValues(alpha: 0.2), width: 2),
                             ),
                             child: ClipOval(
                               child: _isLoadingProfilePic

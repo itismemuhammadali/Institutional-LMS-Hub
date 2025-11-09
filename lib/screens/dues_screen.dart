@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:file_picker/file_picker.dart';
@@ -62,9 +63,9 @@ class _DuesScreenState extends State<DuesScreen> {
           response['challans'] is List) {
         
         setState(() {
-          print('DEBUG: Raw challans response: ${response['challans']}');
+          if (kDebugMode) debugPrint('DEBUG: Raw challans response: ${response['challans']}');
           _dues = (response['challans'] as List).map((challan) {
-            print('DEBUG: Processing challan: $challan');
+            if (kDebugMode) debugPrint('DEBUG: Processing challan: $challan');
             // Parse due date
             DateTime? dueDate;
             if (challan['due_date'] != null) {
@@ -838,9 +839,9 @@ class _DuesScreenState extends State<DuesScreen> {
   }
 
   void _downloadChallan(Due due) async {
-    print('DEBUG: Challan ID: ${due.challanId}');
-    print('DEBUG: File Path: ${due.filePath}');
-    print('DEBUG: Full Due object: ${due.title}, ${due.category}');
+    if (kDebugMode) debugPrint('DEBUG: Challan ID: ${due.challanId}');
+    if (kDebugMode) debugPrint('DEBUG: File Path: ${due.filePath}');
+    if (kDebugMode) debugPrint('DEBUG: Full Due object: ${due.title}, ${due.category}');
     
     if (due.filePath == null || due.filePath!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -863,7 +864,7 @@ class _DuesScreenState extends State<DuesScreen> {
       // Construct the full download URL using challan_file_name
       final downloadUrl = '$baseUrl/backend/uploads/challans/${due.filePath}';
       
-      print('Attempting to download from: $downloadUrl');
+      if (kDebugMode) debugPrint('Attempting to download from: $downloadUrl');
       
       final uri = Uri.parse(downloadUrl);
       if (await canLaunchUrl(uri)) {

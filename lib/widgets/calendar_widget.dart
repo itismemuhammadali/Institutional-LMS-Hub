@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:developer' as developer;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/calendar_event.dart';
@@ -40,8 +41,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
       final result = await ApiService.getCalendarMonth(_focusedDay.year, _focusedDay.month);
       final eventsMap = <DateTime, List<CalendarEvent>>{};
 
-      print('Calendar API Response: $result'); // Debug log
-
       // Holidays and titles from days
       final List days = (result['days'] ?? []) as List;
       for (final d in days) {
@@ -71,8 +70,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         evs = result['calendar_events'] as List;
       }
 
-      print('Found ${evs.length} events: $evs'); // Debug log
-
       for (final e in evs) {
         final dateStr = e['date'] as String?;
         if (dateStr == null) continue;
@@ -86,7 +83,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           final String title = (e['title'] ?? e['name'] ?? '').toString();
           final String duration = (e['duration'] ?? e['time'] ?? 'all day').toString();
           final String? description = (e['description'] ?? e['details'] ?? e['body'])?.toString();
-          print('🔍 Event parsing: rawId=$rawId, eventId=$eventId, title=$title, fullEvent=$e');
           eventsMap[key]!.add(CalendarEvent(
             id: eventId,
             date: dt,
@@ -94,18 +90,14 @@ class _CalendarWidgetState extends State<CalendarWidget> {
             duration: duration,
             description: (description != null && description.isNotEmpty) ? description : null,
           ));
-          print('Added event: ${e['title']} on $dateStr'); // Debug log
         } catch (parseError) {
-          print('Error parsing date $dateStr: $parseError');
+          developer.log(
+            'Failed to parse calendar event date',
+            name: 'CalendarWidget',
+            error: parseError,
+          );
         }
       }
-
-      print('Final events map: ${eventsMap.keys.map((k) => '${k.toString()}: ${eventsMap[k]?.length} events')}'); // Debug log
-      // Debug: Print final events for verification
-      print('Events loaded for calendar display:');
-      eventsMap.forEach((date, events) {
-        print('  $date: ${events.map((e) => e.eventName).join(', ')}');
-      });
 
       setState(() {
         _events = eventsMap;
@@ -122,7 +114,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
         }
       });
     } catch (e) {
-      print('Error loading events: $e'); // Debug log
       // Handle web platform or database errors gracefully
       setState(() {
         _events = <DateTime, List<CalendarEvent>>{};
@@ -133,7 +124,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
   List<CalendarEvent> _getEventsForDay(DateTime day) {
     final normalizedDay = DateTime(day.year, day.month, day.day);
     final events = _events[normalizedDay] ?? [];
-    print('Getting events for ${day.day}/${day.month}/${day.year}: found ${events.length} events');
     return events;
   }
 
@@ -147,7 +137,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
           events: events,
           canDelete: widget.canDeleteEvents,
           onDelete: (eventId) async {
-            print('🗑️ Delete requested for event ID: $eventId');
             try {
               final res = await ApiService.deleteCalendarEvent(eventId);
               if (res['success'] == true) {
@@ -346,7 +335,6 @@ class _CalendarWidgetState extends State<CalendarWidget> {
                 final events = _getEventsForDay(day);
                 final hasEvents = events.isNotEmpty;
 
-                print('Building day ${day.day}: hasEvents=$hasEvents, eventCount=${events.length}');
 
                 return buildDayCell(
                   day: day,

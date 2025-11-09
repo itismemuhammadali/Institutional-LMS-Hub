@@ -439,115 +439,85 @@ class _StudentDashboardState extends State<StudentDashboard>
     ));
     _animationController.forward();
     
-    print('🚀 [INIT] ===== APP INITIALIZING =====');
     log('🚀 [INIT] ===== APP INITIALIZING =====');
-    print('🚀 [INIT] InitState method called successfully!');
+    
     log('🚀 [INIT] InitState method called successfully!');
-    print('🚀 [INIT] About to initialize app...');
+    
     log('🚀 [INIT] About to initialize app...');
     
     // Load user data from API
-      print('🚀 [INIT] Calling _loadUserData...');
       log('🚀 [INIT] Calling _loadUserData...');
     _loadUserData();
     
     // Load upcoming calendar event from backend
-    print('🚀 [INIT] Calling _loadUpcomingEvent...');
     log('🚀 [INIT] Calling _loadUpcomingEvent...');
     _loadUpcomingEvent();
     
     // Load attendance summary for pie chart
-    print('🚀 [INIT] Calling _loadAttendanceSummary...');
     log('🚀 [INIT] Calling _loadAttendanceSummary...');
     _loadAttendanceSummary();
     
     // Check if user is superadmin and load tickets
-    print('🚀 [INIT] Calling _checkUserAndLoadData...');
     log('🚀 [INIT] Calling _checkUserAndLoadData...');
     _checkUserAndLoadData();
     
     // Load notices
-    print('🚀 [INIT] Calling _loadNotices...');
     log('🚀 [INIT] Calling _loadNotices...');
     _loadNotices();
     
     // Load assigned courses (if teacher)
-    print('🚀 [INIT] Calling _loadMyCourses...');
     log('🚀 [INIT] Calling _loadMyCourses...');
     _loadMyCourses();
     
-    print('🚀 [INIT] ===== APP INITIALIZATION COMPLETED =====');
     log('🚀 [INIT] ===== APP INITIALIZATION COMPLETED =====');
-    print('🚀 [INIT] App initialization completed successfully!');
     log('🚀 [INIT] App initialization completed successfully!');
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    print('🔄 [LIFECYCLE] didChangeDependencies called, selectedNavIndex: $_selectedNavIndex');
     log('🔄 [LIFECYCLE] didChangeDependencies called, selectedNavIndex: $_selectedNavIndex');
-    print('🔄 [LIFECYCLE] didChangeDependencies method called successfully!');
     log('🔄 [LIFECYCLE] didChangeDependencies method called successfully!');
-    print('🔄 [LIFECYCLE] About to check if profile screen is selected...');
     log('🔄 [LIFECYCLE] About to check if profile screen is selected...');
-    print('🔄 [LIFECYCLE] About to start profile screen check process...');
     log('🔄 [LIFECYCLE] About to start profile screen check process...');
     // Refresh profile picture when returning from profile screen
     if (_selectedNavIndex == 4) {
-      print('🔄 [LIFECYCLE] Profile screen detected, refreshing profile picture...');
       log('🔄 [LIFECYCLE] Profile screen detected, refreshing profile picture...');
-      print('🔄 [LIFECYCLE] About to start profile picture refresh process...');
       log('🔄 [LIFECYCLE] About to start profile picture refresh process...');
       _refreshProfilePictureOnReturn();
     }
-    print('🔄 [LIFECYCLE] didChangeDependencies completed successfully!');
     log('🔄 [LIFECYCLE] didChangeDependencies completed successfully!');
   }
 
   @override
   void didUpdateWidget(StudentDashboard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    print('🔄 [LIFECYCLE] didUpdateWidget called, selectedNavIndex: $_selectedNavIndex');
     log('🔄 [LIFECYCLE] didUpdateWidget called, selectedNavIndex: $_selectedNavIndex');
-    print('🔄 [LIFECYCLE] didUpdateWidget method called successfully!');
     log('🔄 [LIFECYCLE] didUpdateWidget method called successfully!');
-    print('🔄 [LIFECYCLE] About to check if profile screen is selected in didUpdateWidget...');
     log('🔄 [LIFECYCLE] About to check if profile screen is selected in didUpdateWidget...');
-    print('🔄 [LIFECYCLE] About to start profile screen check process in didUpdateWidget...');
     log('🔄 [LIFECYCLE] About to start profile screen check process in didUpdateWidget...');
     // Refresh profile picture when returning from profile screen
     if (_selectedNavIndex == 4) {
-      print('🔄 [LIFECYCLE] Profile screen detected in didUpdateWidget, refreshing profile picture...');
       log('🔄 [LIFECYCLE] Profile screen detected in didUpdateWidget, refreshing profile picture...');
-      print('🔄 [LIFECYCLE] About to start profile picture refresh process in didUpdateWidget...');
       log('🔄 [LIFECYCLE] About to start profile picture refresh process in didUpdateWidget...');
       _refreshProfilePictureOnReturn();
     }
-    print('🔄 [LIFECYCLE] didUpdateWidget completed successfully!');
     log('🔄 [LIFECYCLE] didUpdateWidget completed successfully!');
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    print('🔄 [LIFECYCLE] didChangeAppLifecycleState called, state: $state');
     log('🔄 [LIFECYCLE] didChangeAppLifecycleState called, state: $state');
-    print('🔄 [LIFECYCLE] didChangeAppLifecycleState method called successfully!');
     log('🔄 [LIFECYCLE] didChangeAppLifecycleState method called successfully!');
-    print('🔄 [LIFECYCLE] About to check if app is resumed...');
     log('🔄 [LIFECYCLE] About to check if app is resumed...');
-    print('🔄 [LIFECYCLE] About to start app lifecycle check process...');
     log('🔄 [LIFECYCLE] About to start app lifecycle check process...');
     // Refresh profile picture when app becomes active
     if (state == AppLifecycleState.resumed) {
-      print('🔄 [LIFECYCLE] App resumed, refreshing profile picture...');
       log('🔄 [LIFECYCLE] App resumed, refreshing profile picture...');
-      print('🔄 [LIFECYCLE] About to start profile picture refresh process...');
       log('🔄 [LIFECYCLE] About to start profile picture refresh process...');
       _refreshProfilePicture();
     }
-    print('🔄 [LIFECYCLE] didChangeAppLifecycleState completed successfully!');
     log('🔄 [LIFECYCLE] didChangeAppLifecycleState completed successfully!');
   }
 
@@ -566,7 +536,7 @@ class _StudentDashboardState extends State<StudentDashboard>
       
       // Extract upcoming events from calendar data
       final upcomingEvents = <Map<String, dynamic>>[];
-      print('Notice Board: Full API response: $calendarResult');
+      
       
       // Process events from the same structure as calendar widget
       // First check for user events in multiple possible locations
@@ -579,7 +549,7 @@ class _StudentDashboardState extends State<StudentDashboard>
         evs = calendarResult['calendar_events'] as List;
       }
       
-      print('Notice Board: Found ${evs.length} user events: $evs');
+      
       
       for (final event in evs) {
         final dateStr = event['date'] as String?;
@@ -589,7 +559,7 @@ class _StudentDashboardState extends State<StudentDashboard>
           final eventDate = DateTime.parse(dateStr);
           // Include events from the past 7 days and all future events
           if (eventDate.isAfter(now.subtract(const Duration(days: 7)))) {
-            print('Notice Board: Adding user event: ${event['title']} on $dateStr');
+            
             upcomingEvents.add({
               'title': '📅 ${(event['title'] ?? event['name'] ?? '').toString()}',
               'created_at': dateStr,
@@ -599,7 +569,7 @@ class _StudentDashboardState extends State<StudentDashboard>
             });
           }
         } catch (e) {
-          print('Notice Board: Error parsing event date $dateStr: $e');
+          
         }
       }
       
@@ -617,7 +587,7 @@ class _StudentDashboardState extends State<StudentDashboard>
             try {
               final dayDate = DateTime.parse(dateStr);
               if (dayDate.isAfter(now.subtract(const Duration(days: 7)))) {
-                print('Notice Board: Adding holiday/title: ${title.isNotEmpty ? title : 'Holiday'} on $dateStr');
+                
                 upcomingEvents.add({
                   'title': '📅 ${title.isNotEmpty ? title : 'Holiday'}',
                   'created_at': dateStr,
@@ -627,12 +597,12 @@ class _StudentDashboardState extends State<StudentDashboard>
                 });
               }
             } catch (e) {
-              print('Notice Board: Error parsing day date $dateStr: $e');
+              
             }
           }
         }
       }
-      print('Notice Board: Total upcoming events found: ${upcomingEvents.length}');
+      
       
       if (!mounted) return;
       setState(() {
@@ -657,7 +627,6 @@ class _StudentDashboardState extends State<StudentDashboard>
   
   Future<void> _loadUserData() async {
     try {
-      print('🔄 [PROFILE PICTURE] Starting user data load...');
       log('🔄 [PROFILE PICTURE] Starting user data load...');
       
       if (mounted) {
@@ -666,48 +635,38 @@ class _StudentDashboardState extends State<StudentDashboard>
         });
       }
 
-      print('🔄 [PROFILE PICTURE] Getting current user...');
       log('🔄 [PROFILE PICTURE] Getting current user...');
       final user = await ApiService.getCurrentUser();
       if (user != null && mounted) {
-        print('✅ [PROFILE PICTURE] Current user loaded: ${user['name']} (ID: ${user['id']})');
         log('✅ [PROFILE PICTURE] Current user loaded: ${user['name']} (ID: ${user['id']})');
         setState(() {
           _currentUser = user;
         });
       } else {
-        print('❌ [PROFILE PICTURE] Failed to load current user');
         log('❌ [PROFILE PICTURE] Failed to load current user');
       }
 
       // Prefer reliable ID helper
-      print('🔄 [PROFILE PICTURE] Getting user ID...');
       log('🔄 [PROFILE PICTURE] Getting user ID...');
       int? userId = await ApiService.getCurrentUserId();
       if (userId == null) {
-        print('⚠️ [PROFILE PICTURE] getCurrentUserId returned null, trying user data...');
         log('⚠️ [PROFILE PICTURE] getCurrentUserId returned null, trying user data...');
         final raw = user?['id'];
         if (raw is int) {
           userId = raw;
-          print('✅ [PROFILE PICTURE] User ID from user data: $userId');
           log('✅ [PROFILE PICTURE] User ID from user data: $userId');
         } else if (raw is String) {
           userId = int.tryParse(raw);
-          print('✅ [PROFILE PICTURE] User ID parsed from string: $userId');
           log('✅ [PROFILE PICTURE] User ID parsed from string: $userId');
         }
       } else {
-        print('✅ [PROFILE PICTURE] User ID from getCurrentUserId: $userId');
         log('✅ [PROFILE PICTURE] User ID from getCurrentUserId: $userId');
       }
 
       if (userId != null) {
-        print('🔄 [PROFILE PICTURE] Loading user profile for ID: $userId...');
         log('🔄 [PROFILE PICTURE] Loading user profile for ID: $userId...');
         final profile = await ApiService.getUserProfile(userId);
         if (mounted) {
-          print('✅ [PROFILE PICTURE] User profile loaded: ${profile?.keys.toList()}');
           log('✅ [PROFILE PICTURE] User profile loaded: ${profile?.keys.toList()}');
           setState(() {
             _userProfile = profile;
@@ -715,34 +674,24 @@ class _StudentDashboardState extends State<StudentDashboard>
         }
         
         // Load profile picture URL after profile is loaded
-        print('🔄 [PROFILE PICTURE] Starting profile picture load...');
         log('🔄 [PROFILE PICTURE] Starting profile picture load...');
-        print('🔄 [PROFILE PICTURE] About to call _loadProfilePicture with userId: $userId');
         log('🔄 [PROFILE PICTURE] About to call _loadProfilePicture with userId: $userId');
-        print('🔄 [PROFILE PICTURE] Calling _loadProfilePicture method...');
         log('🔄 [PROFILE PICTURE] Calling _loadProfilePicture method...');
-        print('🔄 [PROFILE PICTURE] About to await _loadProfilePicture...');
         log('🔄 [PROFILE PICTURE] About to await _loadProfilePicture...');
         await _loadProfilePicture(userId);
-        print('🔄 [PROFILE PICTURE] _loadProfilePicture completed');
         log('🔄 [PROFILE PICTURE] _loadProfilePicture completed');
-        print('🔄 [PROFILE PICTURE] Profile picture loading in user data completed!');
         log('🔄 [PROFILE PICTURE] Profile picture loading in user data completed!');
-        print('🔄 [PROFILE PICTURE] User data profile picture loading successful!');
         log('🔄 [PROFILE PICTURE] User data profile picture loading successful!');
       } else {
-        print('❌ [PROFILE PICTURE] Error loading user data: Missing userId');
         log('❌ [PROFILE PICTURE] Error loading user data: Missing userId');
       }
     } catch (e) {
-      print('❌ [PROFILE PICTURE] Error loading user data: $e');
       log('❌ [PROFILE PICTURE] Error loading user data: $e');
     } finally {
       if (mounted) {
         setState(() {
           _profileLoading = false;
         });
-        print('✅ [PROFILE PICTURE] User data loading completed');
         log('✅ [PROFILE PICTURE] User data loading completed');
       }
     }
@@ -750,33 +699,22 @@ class _StudentDashboardState extends State<StudentDashboard>
 
   Future<void> _loadProfilePicture(int userId) async {
     try {
-      print('🖼️ [PROFILE PICTURE] ===== STARTING PROFILE PICTURE LOAD =====');
       log('🖼️ [PROFILE PICTURE] ===== STARTING PROFILE PICTURE LOAD =====');
-      print('🖼️ [PROFILE PICTURE] User ID: $userId');
       log('🖼️ [PROFILE PICTURE] User ID: $userId');
-      print('🖼️ [PROFILE PICTURE] Current _profilePictureUrl: $_profilePictureUrl');
       log('🖼️ [PROFILE PICTURE] Current _profilePictureUrl: $_profilePictureUrl');
-      print('🖼️ [PROFILE PICTURE] Method called successfully!');
       log('🖼️ [PROFILE PICTURE] Method called successfully!');
-      print('🖼️ [PROFILE PICTURE] _loadProfilePicture method entry point reached!');
       log('🖼️ [PROFILE PICTURE] _loadProfilePicture method entry point reached!');
-      print('🖼️ [PROFILE PICTURE] About to start profile picture loading process...');
       log('🖼️ [PROFILE PICTURE] About to start profile picture loading process...');
       
       // First check if profile picture URL is in the profile data
       String? profilePictureUrl;
       
-      print('🖼️ [PROFILE PICTURE] Checking profile data...');
       log('🖼️ [PROFILE PICTURE] Checking profile data...');
-      print('🖼️ [PROFILE PICTURE] About to check _userProfile...');
       log('🖼️ [PROFILE PICTURE] About to check _userProfile...');
-      print('🖼️ [PROFILE PICTURE] About to start profile data check...');
       log('🖼️ [PROFILE PICTURE] About to start profile data check...');
       
       if (_userProfile != null) {
-        print('🖼️ [PROFILE PICTURE] Profile data available: ${_userProfile!.keys.toList()}');
         log('🖼️ [PROFILE PICTURE] Profile data available: ${_userProfile!.keys.toList()}');
-        print('🖼️ [PROFILE PICTURE] Full profile data: $_userProfile');
         log('🖼️ [PROFILE PICTURE] Full profile data: $_userProfile');
         
         // Check common field names for profile picture URL
@@ -784,91 +722,57 @@ class _StudentDashboardState extends State<StudentDashboard>
                            _userProfile!['avatar_url'] ?? 
                            _userProfile!['profile_image_url'] ??
                            _userProfile!['picture_url'];
-        print('🖼️ [PROFILE PICTURE] Profile picture URL from profile data: $profilePictureUrl');
         log('🖼️ [PROFILE PICTURE] Profile picture URL from profile data: $profilePictureUrl');
-        print('🖼️ [PROFILE PICTURE] Profile data check completed!');
         log('🖼️ [PROFILE PICTURE] Profile data check completed!');
-        print('🖼️ [PROFILE PICTURE] Profile data check successful!');
         log('🖼️ [PROFILE PICTURE] Profile data check successful!');
       } else {
-        print('⚠️ [PROFILE PICTURE] No profile data available');
         log('⚠️ [PROFILE PICTURE] No profile data available');
-        print('⚠️ [PROFILE PICTURE] Profile data check completed with no data!');
         log('⚠️ [PROFILE PICTURE] Profile data check completed with no data!');
-        print('⚠️ [PROFILE PICTURE] Profile data check failed!');
         log('⚠️ [PROFILE PICTURE] Profile data check failed!');
       }
       
       // If not found in profile data, fetch it separately
-      print('🖼️ [PROFILE PICTURE] Checking if URL is null or empty...');
       log('🖼️ [PROFILE PICTURE] Checking if URL is null or empty...');
-      print('🖼️ [PROFILE PICTURE] profilePictureUrl: $profilePictureUrl');
       log('🖼️ [PROFILE PICTURE] profilePictureUrl: $profilePictureUrl');
-      print('🖼️ [PROFILE PICTURE] profilePictureUrl is null: ${profilePictureUrl == null}');
       log('🖼️ [PROFILE PICTURE] profilePictureUrl is null: ${profilePictureUrl == null}');
-      print('🖼️ [PROFILE PICTURE] profilePictureUrl is empty: ${profilePictureUrl?.isEmpty ?? true}');
       log('🖼️ [PROFILE PICTURE] profilePictureUrl is empty: ${profilePictureUrl?.isEmpty ?? true}');
       
       if (profilePictureUrl == null || profilePictureUrl.isEmpty) {
-        print('🔄 [PROFILE PICTURE] No URL in profile data, fetching from API...');
         log('🔄 [PROFILE PICTURE] No URL in profile data, fetching from API...');
-        print('🔄 [PROFILE PICTURE] Calling ApiService.getUserProfilePictureUrl($userId)...');
         log('🔄 [PROFILE PICTURE] Calling ApiService.getUserProfilePictureUrl($userId)...');
-        print('🔄 [PROFILE PICTURE] About to make API call...');
         log('🔄 [PROFILE PICTURE] About to make API call...');
-        print('🔄 [PROFILE PICTURE] About to start API call process...');
         log('🔄 [PROFILE PICTURE] About to start API call process...');
         
         try {
           profilePictureUrl = await ApiService.getUserProfilePictureUrl(userId);
-          print('✅ [PROFILE PICTURE] API call completed');
           log('✅ [PROFILE PICTURE] API call completed');
-          print('🖼️ [PROFILE PICTURE] Profile picture URL from API: $profilePictureUrl');
           log('🖼️ [PROFILE PICTURE] Profile picture URL from API: $profilePictureUrl');
-          print('✅ [PROFILE PICTURE] API call successful!');
           log('✅ [PROFILE PICTURE] API call successful!');
-          print('✅ [PROFILE PICTURE] API call process completed successfully!');
           log('✅ [PROFILE PICTURE] API call process completed successfully!');
         } catch (apiError) {
-          print('❌ [PROFILE PICTURE] API call failed: $apiError');
           log('❌ [PROFILE PICTURE] API call failed: $apiError');
-          print('❌ [PROFILE PICTURE] API call error handled!');
           log('❌ [PROFILE PICTURE] API call error handled!');
-          print('❌ [PROFILE PICTURE] API call process failed!');
           log('❌ [PROFILE PICTURE] API call process failed!');
           profilePictureUrl = null;
         }
       } else {
-        print('✅ [PROFILE PICTURE] Found URL in profile data, skipping API call');
         log('✅ [PROFILE PICTURE] Found URL in profile data, skipping API call');
-        print('✅ [PROFILE PICTURE] API call skipped successfully!');
         log('✅ [PROFILE PICTURE] API call skipped successfully!');
-        print('✅ [PROFILE PICTURE] API call process skipped successfully!');
         log('✅ [PROFILE PICTURE] API call process skipped successfully!');
       }
       
-      print('🖼️ [PROFILE PICTURE] Final profile picture URL: $profilePictureUrl');
       log('🖼️ [PROFILE PICTURE] Final profile picture URL: $profilePictureUrl');
-      print('🖼️ [PROFILE PICTURE] URL is empty: ${profilePictureUrl?.isEmpty ?? true}');
       log('🖼️ [PROFILE PICTURE] URL is empty: ${profilePictureUrl?.isEmpty ?? true}');
-      print('🖼️ [PROFILE PICTURE] URL is null: ${profilePictureUrl == null}');
       log('🖼️ [PROFILE PICTURE] URL is null: ${profilePictureUrl == null}');
       
-      print('🖼️ [PROFILE PICTURE] Checking if widget is mounted...');
       log('🖼️ [PROFILE PICTURE] Checking if widget is mounted...');
-      print('🖼️ [PROFILE PICTURE] Widget mounted: $mounted');
       log('🖼️ [PROFILE PICTURE] Widget mounted: $mounted');
-      print('🖼️ [PROFILE PICTURE] About to check mounted state...');
       log('🖼️ [PROFILE PICTURE] About to check mounted state...');
-      print('🖼️ [PROFILE PICTURE] About to start mounted state check...');
       log('🖼️ [PROFILE PICTURE] About to start mounted state check...');
       
       if (mounted) {
-        print('🔄 [PROFILE PICTURE] Setting state with URL: $profilePictureUrl');
         log('🔄 [PROFILE PICTURE] Setting state with URL: $profilePictureUrl');
-        print('🔄 [PROFILE PICTURE] About to call setState...');
         log('🔄 [PROFILE PICTURE] About to call setState...');
-        print('🔄 [PROFILE PICTURE] About to start setState process...');
         log('🔄 [PROFILE PICTURE] About to start setState process...');
         setState(() {
           // Add cache-busting query to ensure latest image is fetched
@@ -881,83 +785,51 @@ class _StudentDashboardState extends State<StudentDashboard>
             _profilePictureUrl = profilePictureUrl;
           }
         });
-        print('✅ [PROFILE PICTURE] State updated. New _profilePictureUrl: $_profilePictureUrl');
         log('✅ [PROFILE PICTURE] State updated. New _profilePictureUrl: $_profilePictureUrl');
-        print('✅ [PROFILE PICTURE] setState completed successfully!');
         log('✅ [PROFILE PICTURE] setState completed successfully!');
-        print('✅ [PROFILE PICTURE] setState process completed successfully!');
         log('✅ [PROFILE PICTURE] setState process completed successfully!');
         
         // Test if the URL is accessible
-        print('🖼️ [PROFILE PICTURE] Testing URL accessibility...');
         log('🖼️ [PROFILE PICTURE] Testing URL accessibility...');
-        print('🖼️ [PROFILE PICTURE] profilePictureUrl for testing: $profilePictureUrl');
         log('🖼️ [PROFILE PICTURE] profilePictureUrl for testing: $profilePictureUrl');
-        print('🖼️ [PROFILE PICTURE] profilePictureUrl is null for testing: ${profilePictureUrl == null}');
         log('🖼️ [PROFILE PICTURE] profilePictureUrl is null for testing: ${profilePictureUrl == null}');
-        print('🖼️ [PROFILE PICTURE] profilePictureUrl is empty for testing: ${profilePictureUrl?.isEmpty ?? true}');
         log('🖼️ [PROFILE PICTURE] profilePictureUrl is empty for testing: ${profilePictureUrl?.isEmpty ?? true}');
-        print('🖼️ [PROFILE PICTURE] About to test URL accessibility...');
         log('🖼️ [PROFILE PICTURE] About to test URL accessibility...');
-        print('🖼️ [PROFILE PICTURE] About to start URL testing process...');
         log('🖼️ [PROFILE PICTURE] About to start URL testing process...');
         
         if (profilePictureUrl != null && profilePictureUrl.isNotEmpty) {
-          print('🔍 [PROFILE PICTURE] Testing URL accessibility...');
           log('🔍 [PROFILE PICTURE] Testing URL accessibility...');
           try {
             final uri = Uri.parse(profilePictureUrl);
-            print('✅ [PROFILE PICTURE] URL parsed successfully: $uri');
             log('✅ [PROFILE PICTURE] URL parsed successfully: $uri');
-            print('🔍 [PROFILE PICTURE] URL scheme: ${uri.scheme}');
             log('🔍 [PROFILE PICTURE] URL scheme: ${uri.scheme}');
-            print('🔍 [PROFILE PICTURE] URL host: ${uri.host}');
             log('🔍 [PROFILE PICTURE] URL host: ${uri.host}');
-            print('🔍 [PROFILE PICTURE] URL path: ${uri.path}');
             log('🔍 [PROFILE PICTURE] URL path: ${uri.path}');
-            print('✅ [PROFILE PICTURE] URL testing completed successfully!');
             log('✅ [PROFILE PICTURE] URL testing completed successfully!');
-            print('✅ [PROFILE PICTURE] URL testing process completed successfully!');
             log('✅ [PROFILE PICTURE] URL testing process completed successfully!');
           } catch (e) {
-            print('❌ [PROFILE PICTURE] Error parsing profile picture URL: $e');
             log('❌ [PROFILE PICTURE] Error parsing profile picture URL: $e');
-            print('❌ [PROFILE PICTURE] URL testing failed!');
             log('❌ [PROFILE PICTURE] URL testing failed!');
-            print('❌ [PROFILE PICTURE] URL testing process failed!');
             log('❌ [PROFILE PICTURE] URL testing process failed!');
           }
         } else {
-          print('⚠️ [PROFILE PICTURE] No valid URL to test');
           log('⚠️ [PROFILE PICTURE] No valid URL to test');
-          print('⚠️ [PROFILE PICTURE] URL testing skipped!');
           log('⚠️ [PROFILE PICTURE] URL testing skipped!');
-          print('⚠️ [PROFILE PICTURE] URL testing process skipped!');
           log('⚠️ [PROFILE PICTURE] URL testing process skipped!');
         }
       } else {
-        print('⚠️ [PROFILE PICTURE] Widget not mounted, skipping state update');
         log('⚠️ [PROFILE PICTURE] Widget not mounted, skipping state update');
-        print('⚠️ [PROFILE PICTURE] State update skipped!');
         log('⚠️ [PROFILE PICTURE] State update skipped!');
-        print('⚠️ [PROFILE PICTURE] State update process skipped!');
         log('⚠️ [PROFILE PICTURE] State update process skipped!');
       }
       
-      print('🖼️ [PROFILE PICTURE] ===== PROFILE PICTURE LOAD COMPLETED =====');
       log('🖼️ [PROFILE PICTURE] ===== PROFILE PICTURE LOAD COMPLETED =====');
-      print('🖼️ [PROFILE PICTURE] Profile picture loading method completed successfully!');
       log('🖼️ [PROFILE PICTURE] Profile picture loading method completed successfully!');
-      print('🖼️ [PROFILE PICTURE] Profile picture loading process completed successfully!');
       log('🖼️ [PROFILE PICTURE] Profile picture loading process completed successfully!');
     } catch (e) {
-      print('❌ [PROFILE PICTURE] Error loading profile picture: $e');
       log('❌ [PROFILE PICTURE] Error loading profile picture: $e');
-      print('❌ [PROFILE PICTURE] Stack trace: ${StackTrace.current}');
       log('❌ [PROFILE PICTURE] Stack trace: ${StackTrace.current}');
-      print('❌ [PROFILE PICTURE] Profile picture loading method failed!');
       log('❌ [PROFILE PICTURE] Profile picture loading method failed!');
-      print('❌ [PROFILE PICTURE] Profile picture loading process failed!');
       log('❌ [PROFILE PICTURE] Profile picture loading process failed!');
     }
   }
@@ -1494,7 +1366,7 @@ class _StudentDashboardState extends State<StudentDashboard>
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha: 0.2),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -1606,7 +1478,7 @@ class _StudentDashboardState extends State<StudentDashboard>
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.3),
+                              color: Colors.black.withValues(alpha: 0.3),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -2059,173 +1931,114 @@ class _StudentDashboardState extends State<StudentDashboard>
   }
 
   Future<void> _refreshProfilePictureOnReturn() async {
-    print('🔄 [REFRESH] ===== REFRESHING PROFILE PICTURE ON RETURN =====');
     log('🔄 [REFRESH] ===== REFRESHING PROFILE PICTURE ON RETURN =====');
-    print('🔄 [REFRESH] Refresh method called successfully!');
     log('🔄 [REFRESH] Refresh method called successfully!');
-    print('🔄 [REFRESH] About to refresh profile picture on return...');
     log('🔄 [REFRESH] About to refresh profile picture on return...');
-    print('🔄 [REFRESH] About to start profile picture refresh process...');
     log('🔄 [REFRESH] About to start profile picture refresh process...');
     
     // Small delay to ensure profile screen has loaded
     await Future.delayed(const Duration(milliseconds: 100));
-    print('🔄 [REFRESH] Delay completed, getting user ID...');
     log('🔄 [REFRESH] Delay completed, getting user ID...');
     
     // Refresh profile picture when returning from profile screen
     final userId = await ApiService.getCurrentUserId();
     if (userId != null) {
-      print('🔄 [REFRESH] User ID found: $userId, loading profile picture...');
       log('🔄 [REFRESH] User ID found: $userId, loading profile picture...');
       await _loadProfilePicture(userId);
     } else {
-      print('❌ [REFRESH] No user ID found for refresh');
       log('❌ [REFRESH] No user ID found for refresh');
     }
     
-    print('🔄 [REFRESH] ===== REFRESH ON RETURN COMPLETED =====');
     log('🔄 [REFRESH] ===== REFRESH ON RETURN COMPLETED =====');
-    print('🔄 [REFRESH] Refresh on return method completed successfully!');
     log('🔄 [REFRESH] Refresh on return method completed successfully!');
   }
 
   Future<void> _refreshProfilePicture() async {
-    print('🔄 [REFRESH] ===== MANUAL PROFILE PICTURE REFRESH =====');
     log('🔄 [REFRESH] ===== MANUAL PROFILE PICTURE REFRESH =====');
-    print('🔄 [REFRESH] Manual refresh method called successfully!');
     log('🔄 [REFRESH] Manual refresh method called successfully!');
-    print('🔄 [REFRESH] About to refresh profile picture manually...');
     log('🔄 [REFRESH] About to refresh profile picture manually...');
-    print('🔄 [REFRESH] About to start manual profile picture refresh process...');
     log('🔄 [REFRESH] About to start manual profile picture refresh process...');
     
     final userId = await ApiService.getCurrentUserId();
     if (userId != null) {
-      print('🔄 [REFRESH] User ID found: $userId, loading profile picture...');
       log('🔄 [REFRESH] User ID found: $userId, loading profile picture...');
       await _loadProfilePicture(userId);
     } else {
-      print('❌ [REFRESH] No user ID found for manual refresh');
       log('❌ [REFRESH] No user ID found for manual refresh');
     }
     
-    print('🔄 [REFRESH] ===== MANUAL REFRESH COMPLETED =====');
     log('🔄 [REFRESH] ===== MANUAL REFRESH COMPLETED =====');
-    print('🔄 [REFRESH] Manual refresh method completed successfully!');
     log('🔄 [REFRESH] Manual refresh method completed successfully!');
   }
 
   Future<void> _testProfilePictureAPI() async {
     try {
-      print('🧪 [TEST] ===== TESTING PROFILE PICTURE API =====');
       log('🧪 [TEST] ===== TESTING PROFILE PICTURE API =====');
-      print('🧪 [TEST] Test method called successfully!');
       log('🧪 [TEST] Test method called successfully!');
-      print('🧪 [TEST] About to test profile picture API...');
       log('🧪 [TEST] About to test profile picture API...');
-      print('🧪 [TEST] About to start profile picture API testing process...');
       log('🧪 [TEST] About to start profile picture API testing process...');
-      print('🧪 [TEST] About to begin profile picture API testing process...');
       log('🧪 [TEST] About to begin profile picture API testing process...');
       
       final userId = await ApiService.getCurrentUserId();
       if (userId != null) {
-        print('🧪 [TEST] User ID: $userId');
         log('🧪 [TEST] User ID: $userId');
-        print('🧪 [TEST] Calling ApiService.getUserProfilePictureUrl($userId)...');
         log('🧪 [TEST] Calling ApiService.getUserProfilePictureUrl($userId)...');
-        print('🧪 [TEST] About to make API call...');
         log('🧪 [TEST] About to make API call...');
         
         final url = await ApiService.getUserProfilePictureUrl(userId);
-        print('🧪 [TEST] API call completed');
         log('🧪 [TEST] API call completed');
-        print('🧪 [TEST] Test result - Profile picture URL: $url');
         log('🧪 [TEST] Test result - Profile picture URL: $url');
-        print('🧪 [TEST] URL is null: ${url == null}');
         log('🧪 [TEST] URL is null: ${url == null}');
-        print('🧪 [TEST] URL is empty: ${url?.isEmpty ?? true}');
         log('🧪 [TEST] URL is empty: ${url?.isEmpty ?? true}');
-        print('🧪 [TEST] API call successful!');
         log('🧪 [TEST] API call successful!');
-        print('🧪 [TEST] API call process completed successfully!');
         log('🧪 [TEST] API call process completed successfully!');
         
         if (url != null && url.isNotEmpty) {
-          print('✅ [TEST] Profile picture found!');
           log('✅ [TEST] Profile picture found!');
-          print('✅ [TEST] Showing success snackbar...');
           log('✅ [TEST] Showing success snackbar...');
-          print('✅ [TEST] About to show success snackbar...');
           log('✅ [TEST] About to show success snackbar...');
-          print('✅ [TEST] About to start success snackbar process...');
           log('✅ [TEST] About to start success snackbar process...');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Profile picture found: $url', style: GoogleFonts.inter()),
+              content: Text('Profile picture available: $url', style: GoogleFonts.inter(color: Colors.white)),
               backgroundColor: const Color(0xFF1E3A8A),
             ),
           );
-          print('✅ [TEST] Success snackbar shown!');
           log('✅ [TEST] Success snackbar shown!');
-          print('✅ [TEST] Success snackbar process completed!');
           log('✅ [TEST] Success snackbar process completed!');
         } else {
-          print('⚠️ [TEST] No profile picture found');
           log('⚠️ [TEST] No profile picture found');
-          print('⚠️ [TEST] Showing warning snackbar...');
           log('⚠️ [TEST] Showing warning snackbar...');
-          print('⚠️ [TEST] About to show warning snackbar...');
           log('⚠️ [TEST] About to show warning snackbar...');
-          print('⚠️ [TEST] About to start warning snackbar process...');
           log('⚠️ [TEST] About to start warning snackbar process...');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('No profile picture found', style: GoogleFonts.inter()),
-              backgroundColor: const Color(0xFF1E3A8A),
+              content: const Text('No profile picture uploaded yet', style: TextStyle(color: Colors.white)),
+              backgroundColor: const Color(0xFFDC2626),
             ),
           );
-          print('⚠️ [TEST] Warning snackbar shown!');
           log('⚠️ [TEST] Warning snackbar shown!');
-          print('⚠️ [TEST] Warning snackbar process completed!');
           log('⚠️ [TEST] Warning snackbar process completed!');
         }
       } else {
-        print('❌ [TEST] No user ID available');
-        log('❌ [TEST] No user ID available');
-        print('❌ [TEST] Showing error snackbar...');
+        log('❌ [TEST] Unable to get user ID for test');
         log('❌ [TEST] Showing error snackbar...');
-        print('❌ [TEST] About to show error snackbar...');
         log('❌ [TEST] About to show error snackbar...');
-        print('❌ [TEST] About to start error snackbar process...');
         log('❌ [TEST] About to start error snackbar process...');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('No user ID available', style: GoogleFonts.inter()),
-            backgroundColor: const Color(0xFF1E3A8A),
+          const SnackBar(
+            content: Text('Could not retrieve user ID', style: TextStyle(color: Colors.white)),
+            backgroundColor: Color(0xFFDC2626),
           ),
         );
-        print('❌ [TEST] Error snackbar shown!');
         log('❌ [TEST] Error snackbar shown!');
-        print('❌ [TEST] Error snackbar process completed!');
         log('❌ [TEST] Error snackbar process completed!');
       }
-      
-      print('🧪 [TEST] ===== TEST COMPLETED =====');
-      log('🧪 [TEST] ===== TEST COMPLETED =====');
-      print('🧪 [TEST] Test method completed successfully!');
-      log('🧪 [TEST] Test method completed successfully!');
     } catch (e) {
-      print('❌ [TEST] Error testing profile picture API: $e');
-      log('❌ [TEST] Error testing profile picture API: $e');
-      print('❌ [TEST] Stack trace: ${StackTrace.current}');
+      log('❌ [TEST] Error during test: $e');
       log('❌ [TEST] Stack trace: ${StackTrace.current}');
-      print('❌ [TEST] Showing error snackbar...');
       log('❌ [TEST] Showing error snackbar...');
-      print('❌ [TEST] About to show error snackbar...');
       log('❌ [TEST] About to show error snackbar...');
-      print('❌ [TEST] About to start error snackbar process...');
       log('❌ [TEST] About to start error snackbar process...');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -2233,13 +2046,9 @@ class _StudentDashboardState extends State<StudentDashboard>
           backgroundColor: const Color(0xFF1E3A8A),
         ),
       );
-      print('❌ [TEST] Error snackbar shown!');
       log('❌ [TEST] Error snackbar shown!');
-      print('❌ [TEST] Error snackbar process completed!');
       log('❌ [TEST] Error snackbar process completed!');
-      print('❌ [TEST] Test method failed!');
       log('❌ [TEST] Test method failed!');
-      print('❌ [TEST] Test method process failed!');
       log('❌ [TEST] Test method process failed!');
     }
   }
@@ -2281,7 +2090,7 @@ class _StudentDashboardState extends State<StudentDashboard>
             onEventsChanged: _onCalendarUpdated,
             canDeleteEvents: () {
               final canDelete = _currentUser != null && (_currentUser!['is_super_admin'] == 1 || _currentUser!['is_super_admin'] == '1');
-              print('🔐 CalendarWidget canDeleteEvents: $canDelete (user: ${_currentUser?['name']}, is_super_admin: ${_currentUser?['is_super_admin']})');
+              log('🔐 CalendarWidget canDeleteEvents: $canDelete (user: ${_currentUser?['name']}, is_super_admin: ${_currentUser?['is_super_admin']})');
               return canDelete;
             }(),
           ),
@@ -2311,7 +2120,7 @@ class _StudentDashboardState extends State<StudentDashboard>
               onEventsChanged: _onCalendarUpdated,
               canDeleteEvents: () {
               final canDelete = _currentUser != null && (_currentUser!['is_super_admin'] == 1 || _currentUser!['is_super_admin'] == '1');
-              print('🔐 CalendarWidget canDeleteEvents: $canDelete (user: ${_currentUser?['name']}, is_super_admin: ${_currentUser?['is_super_admin']})');
+              log('🔐 CalendarWidget canDeleteEvents: $canDelete (user: ${_currentUser?['name']}, is_super_admin: ${_currentUser?['is_super_admin']})');
               return canDelete;
             }(),
             ),
@@ -2398,30 +2207,20 @@ class _StudentDashboardState extends State<StudentDashboard>
   }
 
   Widget _buildProfileScreen() {
-    print('🖼️ [PROFILE SCREEN] Building profile screen with callback');
     log('🖼️ [PROFILE SCREEN] Building profile screen with callback');
-    print('🖼️ [PROFILE SCREEN] Profile screen building method called successfully!');
     log('🖼️ [PROFILE SCREEN] Profile screen building method called successfully!');
-    print('🖼️ [PROFILE SCREEN] About to build profile screen...');
     log('🖼️ [PROFILE SCREEN] About to build profile screen...');
-    print('🖼️ [PROFILE SCREEN] About to start profile screen building process...');
     log('🖼️ [PROFILE SCREEN] About to start profile screen building process...');
     
     return ProfileScreen(
       onProfileUpdated: () async {
-        print('🖼️ [PROFILE SCREEN] Profile updated callback triggered');
         log('🖼️ [PROFILE SCREEN] Profile updated callback triggered');
-        print('🖼️ [PROFILE SCREEN] Profile updated callback method called successfully!');
         log('🖼️ [PROFILE SCREEN] Profile updated callback method called successfully!');
-        print('🖼️ [PROFILE SCREEN] About to refresh profile picture...');
         log('🖼️ [PROFILE SCREEN] About to refresh profile picture...');
-        print('🖼️ [PROFILE SCREEN] About to start profile picture refresh process...');
         log('🖼️ [PROFILE SCREEN] About to start profile picture refresh process...');
         // Refresh profile picture when profile is updated
         await _refreshProfilePicture();
-        print('🖼️ [PROFILE SCREEN] Profile picture refresh completed!');
         log('🖼️ [PROFILE SCREEN] Profile picture refresh completed!');
-        print('🖼️ [PROFILE SCREEN] Profile picture refresh process completed!');
         log('🖼️ [PROFILE SCREEN] Profile picture refresh process completed!');
       },
     );
@@ -2582,15 +2381,15 @@ class _StudentDashboardState extends State<StudentDashboard>
   }
 
   Widget _buildProfilePicture({required double size}) {
-    print('🖼️ [WIDGET] ===== BUILDING PROFILE PICTURE WIDGET =====');
-    print('🖼️ [WIDGET] Size: $size');
-    print('🖼️ [WIDGET] Current _profilePictureUrl: $_profilePictureUrl');
-    print('🖼️ [WIDGET] URL is null: ${_profilePictureUrl == null}');
-    print('🖼️ [WIDGET] URL is empty: ${_profilePictureUrl?.isEmpty ?? true}');
-    print('🖼️ [WIDGET] Will show image: ${_profilePictureUrl != null && _profilePictureUrl!.isNotEmpty}');
-    print('🖼️ [WIDGET] Widget building method called successfully!');
-    print('🖼️ [WIDGET] About to build profile picture widget...');
-    print('🖼️ [WIDGET] About to start widget building process...');
+    log('🖼️ [WIDGET] ===== BUILDING PROFILE PICTURE WIDGET =====');
+    log('🖼️ [WIDGET] Size: $size');
+    log('🖼️ [WIDGET] Current _profilePictureUrl: $_profilePictureUrl');
+    log('🖼️ [WIDGET] URL is null: ${_profilePictureUrl == null}');
+    log('🖼️ [WIDGET] URL is empty: ${_profilePictureUrl?.isEmpty ?? true}');
+    log('🖼️ [WIDGET] Will show image: ${_profilePictureUrl != null && _profilePictureUrl!.isNotEmpty}');
+    log('🖼️ [WIDGET] Widget building method called successfully!');
+    log('🖼️ [WIDGET] About to build profile picture widget...');
+    log('🖼️ [WIDGET] About to start widget building process...');
     log('🖼️ [WIDGET] ===== BUILDING PROFILE PICTURE WIDGET =====');
     log('🖼️ [WIDGET] Size: $size');
     log('🖼️ [WIDGET] Current _profilePictureUrl: $_profilePictureUrl');
@@ -2603,7 +2402,7 @@ class _StudentDashboardState extends State<StudentDashboard>
     
     return GestureDetector(
       onTap: () {
-        print('🖼️ [WIDGET] Profile picture tapped - navigating to profile screen');
+        log('🖼️ [WIDGET] Profile picture tapped - navigating to profile screen');
         log('🖼️ [WIDGET] Profile picture tapped - navigating to profile screen');
         // Refresh profile picture before navigating
         _refreshProfilePicture();
@@ -2613,7 +2412,7 @@ class _StudentDashboardState extends State<StudentDashboard>
       },
       onLongPress: () async {
         // Long press to test profile picture API
-        print('🖼️ [WIDGET] Long press detected - testing profile picture API...');
+        log('🖼️ [WIDGET] Long press detected - testing profile picture API...');
         log('🖼️ [WIDGET] Long press detected - testing profile picture API...');
         await _testProfilePictureAPI();
       },
@@ -2637,25 +2436,25 @@ class _StudentDashboardState extends State<StudentDashboard>
           child: _profilePictureUrl != null && _profilePictureUrl!.isNotEmpty
               ? Builder(
                   builder: (context) {
-                    print('🖼️ [WIDGET] Building Image.network with URL: $_profilePictureUrl');
                     log('🖼️ [WIDGET] Building Image.network with URL: $_profilePictureUrl');
-                    print('🖼️ [WIDGET] About to create Image.network widget');
+                    log('🖼️ [WIDGET] Building Image.network with URL: $_profilePictureUrl');
                     log('🖼️ [WIDGET] About to create Image.network widget');
-                    print('🖼️ [WIDGET] Image.network builder called successfully!');
+                    log('🖼️ [WIDGET] About to create Image.network widget');
                     log('🖼️ [WIDGET] Image.network builder called successfully!');
-                    print('🖼️ [WIDGET] About to start Image.network creation process...');
+                    log('🖼️ [WIDGET] Image.network builder called successfully!');
+                    log('🖼️ [WIDGET] About to start Image.network creation process...');
                     log('🖼️ [WIDGET] About to start Image.network creation process...');
                     return Image.network(
                       _profilePictureUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) {
-                        print('❌ [WIDGET] Error loading profile picture: $error');
                         log('❌ [WIDGET] Error loading profile picture: $error');
-                        print('❌ [WIDGET] Stack trace: $stackTrace');
+                        log('❌ [WIDGET] Error loading profile picture: $error');
                         log('❌ [WIDGET] Stack trace: $stackTrace');
-                        print('❌ [WIDGET] Error builder called successfully!');
+                        log('❌ [WIDGET] Stack trace: $stackTrace');
                         log('❌ [WIDGET] Error builder called successfully!');
-                        print('❌ [WIDGET] Error builder process completed!');
+                        log('❌ [WIDGET] Error builder called successfully!');
+                        log('❌ [WIDGET] Error builder process completed!');
                         log('❌ [WIDGET] Error builder process completed!');
                         return const Icon(
                           Icons.person,
@@ -2665,19 +2464,19 @@ class _StudentDashboardState extends State<StudentDashboard>
                       },
                       loadingBuilder: (context, child, loadingProgress) {
                         if (loadingProgress == null) {
-                          print('✅ [WIDGET] Profile picture loaded successfully');
                           log('✅ [WIDGET] Profile picture loaded successfully');
-                          print('✅ [WIDGET] Loading builder completed successfully!');
+                          log('✅ [WIDGET] Profile picture loaded successfully');
                           log('✅ [WIDGET] Loading builder completed successfully!');
-                          print('✅ [WIDGET] Loading builder process completed!');
+                          log('✅ [WIDGET] Loading builder completed successfully!');
+                          log('✅ [WIDGET] Loading builder process completed!');
                           log('✅ [WIDGET] Loading builder process completed!');
                           return child;
                         }
-                        print('🔄 [WIDGET] Loading profile picture... ${loadingProgress.cumulativeBytesLoaded}/${loadingProgress.expectedTotalBytes}');
                         log('🔄 [WIDGET] Loading profile picture... ${loadingProgress.cumulativeBytesLoaded}/${loadingProgress.expectedTotalBytes}');
-                        print('🔄 [WIDGET] Loading builder called successfully!');
+                        log('🔄 [WIDGET] Loading profile picture... ${loadingProgress.cumulativeBytesLoaded}/${loadingProgress.expectedTotalBytes}');
                         log('🔄 [WIDGET] Loading builder called successfully!');
-                        print('🔄 [WIDGET] Loading builder process in progress!');
+                        log('🔄 [WIDGET] Loading builder called successfully!');
+                        log('🔄 [WIDGET] Loading builder process in progress!');
                         log('🔄 [WIDGET] Loading builder process in progress!');
                         return const Icon(
                           Icons.person,
@@ -2690,13 +2489,13 @@ class _StudentDashboardState extends State<StudentDashboard>
                 )
               : Builder(
                   builder: (context) {
-                    print('🖼️ [WIDGET] No profile picture URL, showing default icon');
                     log('🖼️ [WIDGET] No profile picture URL, showing default icon');
-                    print('🖼️ [WIDGET] About to create default icon widget');
+                    log('🖼️ [WIDGET] No profile picture URL, showing default icon');
                     log('🖼️ [WIDGET] About to create default icon widget');
-                    print('🖼️ [WIDGET] Default icon builder called successfully!');
+                    log('🖼️ [WIDGET] About to create default icon widget');
                     log('🖼️ [WIDGET] Default icon builder called successfully!');
-                    print('🖼️ [WIDGET] Default icon builder process completed!');
+                    log('🖼️ [WIDGET] Default icon builder called successfully!');
+                    log('🖼️ [WIDGET] Default icon builder process completed!');
                     log('🖼️ [WIDGET] Default icon builder process completed!');
                     return const Icon(
                       Icons.person,
@@ -2711,13 +2510,13 @@ class _StudentDashboardState extends State<StudentDashboard>
   }
 
   Widget _buildNameSection() {
-    print('🏠 [NAME SECTION] Building name section...');
-    print('🏠 [NAME SECTION] Current user: $_currentUser');
-    print('🏠 [NAME SECTION] User profile: $_userProfile');
-    print('🏠 [NAME SECTION] Profile picture URL: $_profilePictureUrl');
-    print('🏠 [NAME SECTION] Name section building method called successfully!');
-    print('🏠 [NAME SECTION] About to build name section...');
-    print('🏠 [NAME SECTION] About to start name section building process...');
+    log('🏠 [NAME SECTION] Building name section...');
+    log('🏠 [NAME SECTION] Current user: $_currentUser');
+    log('🏠 [NAME SECTION] User profile: $_userProfile');
+    log('🏠 [NAME SECTION] Profile picture URL: $_profilePictureUrl');
+    log('🏠 [NAME SECTION] Name section building method called successfully!');
+    log('🏠 [NAME SECTION] About to build name section...');
+    log('🏠 [NAME SECTION] About to start name section building process...');
     log('🏠 [NAME SECTION] Building name section...');
     log('🏠 [NAME SECTION] Current user: $_currentUser');
     log('🏠 [NAME SECTION] User profile: $_userProfile');
@@ -2765,11 +2564,11 @@ class _StudentDashboardState extends State<StudentDashboard>
                 children: [
             Builder(
               builder: (context) {
-                print('🏠 [NAME SECTION] Building profile picture for mobile...');
-                print('🏠 [NAME SECTION] Profile picture URL in mobile: $_profilePictureUrl');
-                print('🏠 [NAME SECTION] Mobile profile picture builder called successfully!');
-                print('🏠 [NAME SECTION] About to build mobile profile picture...');
-                print('🏠 [NAME SECTION] About to start mobile profile picture building process...');
+                log('🏠 [NAME SECTION] Building profile picture for mobile...');
+                log('🏠 [NAME SECTION] Profile picture URL in mobile: $_profilePictureUrl');
+                log('🏠 [NAME SECTION] Mobile profile picture builder called successfully!');
+                log('🏠 [NAME SECTION] About to build mobile profile picture...');
+                log('🏠 [NAME SECTION] About to start mobile profile picture building process... ');
                 log('🏠 [NAME SECTION] Building profile picture for mobile...');
                 log('🏠 [NAME SECTION] Profile picture URL in mobile: $_profilePictureUrl');
                 log('🏠 [NAME SECTION] Mobile profile picture builder called successfully!');
@@ -2945,11 +2744,11 @@ class _StudentDashboardState extends State<StudentDashboard>
             children: [
             Builder(
               builder: (context) {
-                print('🏠 [NAME SECTION] Building profile picture for desktop...');
-                print('🏠 [NAME SECTION] Profile picture URL in desktop: $_profilePictureUrl');
-                print('🏠 [NAME SECTION] Desktop profile picture builder called successfully!');
-                print('🏠 [NAME SECTION] About to build desktop profile picture...');
-                print('🏠 [NAME SECTION] About to start desktop profile picture building process...');
+                log('🏠 [NAME SECTION] Building profile picture for desktop...');
+                log('🏠 [NAME SECTION] Profile picture URL in desktop: $_profilePictureUrl');
+                log('🏠 [NAME SECTION] Desktop profile picture builder called successfully!');
+                log('🏠 [NAME SECTION] About to build desktop profile picture...');
+                log('🏠 [NAME SECTION] About to start desktop profile picture building process...');
                 log('🏠 [NAME SECTION] Building profile picture for desktop...');
                 log('🏠 [NAME SECTION] Profile picture URL in desktop: $_profilePictureUrl');
                 log('🏠 [NAME SECTION] Desktop profile picture builder called successfully!');
@@ -4453,7 +4252,7 @@ class _StudentDashboardState extends State<StudentDashboard>
         }).length;
       }
     } catch (e) {
-      print('[DEBUG] Error parsing lectures JSON in home screen: $e');
+      log('[DEBUG] Error parsing lectures JSON in home screen: $e');
     }
     
     return 0;
@@ -4482,7 +4281,7 @@ class _StudentDashboardState extends State<StudentDashboard>
         }).toList();
       }
     } catch (e) {
-      print('[DEBUG] Error parsing lectures in dialog: $e');
+      log('[DEBUG] Error parsing lectures in dialog: $e');
     }
 
     if (lectures.isEmpty) {

@@ -329,7 +329,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
             await ApiService.upsertAttendanceRecord(userId: uid, date: date, status: status);
           }
         }
-        if (!mounted) return;
+        if (!context.mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Teachers attendance saved'), backgroundColor: Color(0xFF10B981)),
         );
@@ -362,7 +362,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
         await ApiService.recordClassAttendance(className: _selectedClassName!, date: date, entries: entries);
       }
       // TODO: Persist remarks once backend endpoint is available (e.g., class_attendance remarks/diary)
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Attendance saved successfully'), backgroundColor: Color(0xFF10B981)),
       );
@@ -431,6 +431,7 @@ class _TeacherAttendanceScreenState extends State<TeacherAttendanceScreen> {
                         onPressed: () async {
                           final allowPop = await _handleBack();
                           if (!mounted) return;
+                          if (!context.mounted) return;
                           if (allowPop) {
                             if (widget.onBack != null) {
                               widget.onBack!.call();

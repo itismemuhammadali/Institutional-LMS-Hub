@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../services/api_service.dart';
+import 'assessments_manage_screen.dart';
+
 import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
@@ -47,6 +50,17 @@ class CourseDetailsScreen extends StatefulWidget {
 }
 
 class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
+  // Planner / schedule state
+  int? _plannerPlanId;
+  String? _plannerFrequency;
+  DateTime? _plannerSingleDate;
+  DateTimeRange? _plannerRange;
+  List<DateTime> _plannerScheduledDates = const [];
+  final TextEditingController _plannerNotesController = TextEditingController();
+  int? _plannerItemId;
+  bool _loadingPlanner = false;
+  String? _plannerError;
+
   // Local UI state (can be wired to backend later)
   String? _upcomingLectureDateTime; // e.g., 2025-09-01 09:00 AM
   String? _nextQuizDateTime; // e.g., 2025-09-05 10:00 AM
@@ -161,6 +175,249 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     }
   }
 
+  Future<void> _loadPlanner() async {
+    if (!mounted) return;
+    setState(() {
+      _loadingPlanner = true;
+      _plannerError = null;
+    });
+
+    await _ensureIdentifiers();
+    final classId = _classIdEff;
+    final subjectId = _subjectIdEff;
+    if (classId == null || subjectId == null) {
+      if (!mounted) return;
+      setState(() {
+        _loadingPlanner = false;
+        _plannerPlanId = null;
+        _plannerFrequency = null;
+        _plannerSingleDate = null;
+        _plannerRange = null;
+        _plannerScheduledDates = const [];
+        _plannerItemId = null;
+        _plannerNotesController.clear();
+        _plannerError = 'Missing class or subject identifiers.';
+      });
+      return;
+    }
+
+    try {
+      final response = await ApiService.getPlanner(classId: classId, subjectId: subjectId);
+      final responseMap = _castToStringMap(response) ?? {};
+
+      if (responseMap['success'] == false) {
+        final message = responseMap['error']?.toString() ?? 'Failed to load planner.';
+        throw Exception(message);
+      }
+
+      final planMap = _castToStringMap(responseMap['plan']);
+      final List<dynamic> itemsList = responseMap['items'] is List ? List<dynamic>.from(responseMap['items'] as List) : const [];
+
+      final int? planId = _parseNullableInt(planMap?['id']);
+      final String? frequency = () {
+        final raw = planMap?['frequency']?.toString();
+        if (raw == null) return null;
+        final trimmed = raw.trim();
+        return trimmed.isEmpty ? null : trimmed;
+      }();
+      final DateTime? singleDate = _tryParsePlannerDate(planMap?['single_date']);
+      final DateTime? rangeStart = _tryParsePlannerDate(planMap?['range_start']);
+      final DateTime? rangeEnd = _tryParsePlannerDate(planMap?['range_end']);
+      DateTimeRange? range;
+      if (rangeStart != null && rangeEnd != null && !rangeStart.isAfter(rangeEnd)) {
+        range = DateTimeRange(start: rangeStart, end: rangeEnd);
+      }
+
+      final Set<DateTime> dateSet = <DateTime>{};
+      if (singleDate != null) {
+        dateSet.add(_stripTime(singleDate));
+      }
+      if (range != null) {
+        for (final date in _enumerateDates(range.start, range.end)) {
+          dateSet.add(date);
+        }
+      }
+
+      int? itemId;
+      String notes = '';
+
+      for (final raw in itemsList) {
+        final map = _castToStringMap(raw);
+        if (map == null) continue;
+        final itemType = map['item_type']?.toString().toLowerCase();
+        if (itemType == null) continue;
+        final normalizedStatus = _normalizePlannerStatus(map['status']?.toString());
+        if (itemType == 'syllabus' && normalizedStatus == 'scheduled') {
+          final desc = (map['description'] ?? map['title'] ?? '').toString().trim();
+          if (desc.isNotEmpty) {
+            notes = desc;
+          }
+          itemId = _parseNullableInt(map['id']);
+
+          final sessions = map['sessions'];
+          if (sessions is List) {
+            for (final session in sessions) {
+              final sessionMap = _castToStringMap(session);
+              if (sessionMap == null) continue;
+              final parsedDate = _tryParsePlannerDate(sessionMap['session_date']);
+              if (parsedDate != null) {
+                dateSet.add(_stripTime(parsedDate));
+              }
+              final sessionNote = sessionMap['notes']?.toString().trim();
+              if (sessionNote != null && sessionNote.isNotEmpty) {
+                if (notes.isEmpty) {
+                  notes = sessionNote;
+                } else if (!notes.split('\n').contains(sessionNote)) {
+                  notes = '$notes\n$sessionNote';
+                }
+              }
+            }
+          }
+        }
+      }
+
+      final List<DateTime> scheduledDates = dateSet.toList()
+        ..sort();
+
+      if (!mounted) return;
+      setState(() {
+        _plannerPlanId = planId;
+        _plannerFrequency = frequency;
+        _plannerSingleDate = singleDate;
+        _plannerRange = range;
+        _plannerScheduledDates = scheduledDates;
+        _plannerItemId = itemId;
+        _loadingPlanner = false;
+        _plannerError = null;
+        if (notes.isEmpty) {
+          _plannerNotesController.clear();
+        } else {
+          _plannerNotesController.text = notes;
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingPlanner = false;
+        _plannerError = e.toString();
+      });
+    }
+  }
+
+  Future<void> _savePlannerPlan({
+    required String frequency,
+    required DateTime? singleDate,
+    required DateTimeRange? range,
+    required String notes,
+  }) async {
+    await _ensureIdentifiers();
+    final classId = _classIdEff;
+    final subjectId = _subjectIdEff;
+    if (classId == null || subjectId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Missing class or subject identifiers.')),
+      );
+      return;
+    }
+
+    DateTime? start;
+    DateTime? end;
+    if (singleDate != null) {
+      start = _stripTime(singleDate);
+      end = start;
+    } else if (range != null) {
+      start = _stripTime(range.start);
+      end = _stripTime(range.end);
+    }
+
+    if (start == null || end == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select at least one date for the plan.')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _loadingPlanner = true;
+      _plannerError = null;
+    });
+
+    try {
+      final planResponse = await ApiService.savePlannerPlan(
+        planId: _plannerPlanId,
+        classId: classId,
+        subjectId: subjectId,
+        frequency: frequency,
+        singleDate: singleDate != null ? _formatIsoDate(_stripTime(singleDate)) : null,
+        rangeStart: range != null ? _formatIsoDate(_stripTime(range.start)) : null,
+        rangeEnd: range != null ? _formatIsoDate(_stripTime(range.end)) : null,
+        status: 'active',
+      );
+
+      if (planResponse['success'] == false) {
+        final message = planResponse['error']?.toString() ?? 'Failed to save planner plan.';
+        throw Exception(message);
+      }
+
+      final int? resolvedPlanId = _parseNullableInt(planResponse['plan_id']) ?? _plannerPlanId;
+      if (resolvedPlanId == null) {
+        throw Exception('Planner plan saved but the server did not return an ID.');
+      }
+
+      int? updatedItemId = _plannerItemId;
+      final trimmedNotes = notes.trim();
+      if (trimmedNotes.isNotEmpty) {
+        final itemResponse = await ApiService.savePlannerItem(
+          id: _plannerItemId,
+          planId: resolvedPlanId,
+          itemType: 'syllabus',
+          description: trimmedNotes,
+          status: 'scheduled',
+          scheduledFor: _formatIsoDate(start),
+          scheduledUntil: _formatIsoDate(end),
+        );
+
+        if (itemResponse['success'] == false) {
+          final message = itemResponse['error']?.toString() ?? 'Failed to save planner item.';
+          throw Exception(message);
+        }
+
+        updatedItemId = _parseNullableInt(itemResponse['item_id']) ?? updatedItemId;
+      } else if (_plannerItemId != null) {
+        final deleteResponse = await ApiService.deletePlannerItem(id: _plannerItemId!);
+        if (deleteResponse['success'] == false) {
+          final message = deleteResponse['error']?.toString() ?? 'Failed to remove planner item.';
+          throw Exception(message);
+        }
+        updatedItemId = null;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _plannerPlanId = resolvedPlanId;
+        _plannerItemId = updatedItemId;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Planned schedule saved successfully.')),
+      );
+
+      await _loadPlanner();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingPlanner = false;
+        _plannerError = e.toString();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save planned schedule: ${e.toString()}')),
+      );
+    }
+  }
+
   String? _detectLevelFromClassName(String className) {
     bool isSecondaryClass(String c) {
       final digits = RegExp(r"\d+").firstMatch(c)?.group(0);
@@ -211,7 +468,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       try {
         final uid = await ApiService.getCurrentUserId();
         // ignore: avoid_print
-        print('[AssignHistory] Fetching with classId=${widget.classId}, subjectId=${widget.subjectId}, userId=$uid');
+        _dlog('[AssignHistory] Fetching with classId=${widget.classId}, subjectId=${widget.subjectId}, userId=$uid');
         final res = await ApiService.getStudentAssignmentHistory(
           classId: widget.classId!,
           subjectId: widget.subjectId!,
@@ -226,11 +483,11 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           });
         }
         // ignore: avoid_print
-        print('[AssignHistory] Received ${history.length} entries');
+        _dlog('[AssignHistory] Received ${history.length} entries');
       } catch (e) {
         error = e.toString();
         // ignore: avoid_print
-        print('[AssignHistory][Error] $error');
+        _dlog('[AssignHistory][Error] $error');
       }
     } else {
       error = 'Missing class/subject context to fetch assignment history.';
@@ -441,20 +698,17 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         final uid = await ApiService.getCurrentUserId();
         // Prefer explicit userId to avoid any JWT/session mismatch
         // Debug: Log parameters used for fetching quiz history
-        // ignore: avoid_print
-        print('[QuizHistory] Fetching with classId=${widget.classId}, subjectId=${widget.subjectId}, userId=$uid');
+        _dlog('[QuizHistory] Fetching with classId=${widget.classId}, subjectId=${widget.subjectId}, userId=$uid');
         final res = await ApiService.getStudentQuizHistory(
           classId: widget.classId!,
           subjectId: widget.subjectId!,
           userId: uid,
         );
         history.addAll(res);
-        // ignore: avoid_print
-        print('[QuizHistory] Received ${history.length} entries');
+        _dlog('[QuizHistory] Received ${history.length} entries');
       } catch (e) {
         error = e.toString();
-        // ignore: avoid_print
-        print('[QuizHistory][Error] $error');
+        _dlog('[QuizHistory][Error] $error');
       }
     } else {
       error = 'Missing class/subject context to fetch quiz history.';
@@ -676,7 +930,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       style: TextStyle(color: bodyColor),
                       decoration: InputDecoration(
                         hintText: 'e.g. Algebra - Quadratic Equations',
-                        hintStyle: TextStyle(color: secondaryColor.withOpacity(0.6)),
+                        hintStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.6)),
                         filled: true,
                         fillColor: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
                         enabledBorder: buildBorder(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
@@ -696,7 +950,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                         style: TextStyle(color: bodyColor),
                         decoration: InputDecoration(
                           hintText: 'e.g. 1',
-                          hintStyle: TextStyle(color: secondaryColor.withOpacity(0.6)),
+                          hintStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.6)),
                           filled: true,
                           fillColor: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
                           enabledBorder: buildBorder(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
@@ -715,7 +969,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                             decoration: BoxDecoration(
                               color: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: isLight ? lightBorder : Colors.white.withValues(alpha: 0.15)),
+                              border: Border.all(color: isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
                             ),
                             child: Text(
                               whenDisplay.isEmpty ? 'DD/MM/YY, 00:00 AM/PM' : whenDisplay,
@@ -868,8 +1122,15 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSummary();
-    _ensureIdentifiers();
+    _initData();
+  }
+
+  Future<void> _initData() async {
+    await _ensureIdentifiers();
+    await Future.wait([
+      _loadSummary(),
+      _loadPlanner(),
+    ]);
   }
 
   int _getAvailableLecturesCount() {
@@ -891,7 +1152,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       builder: (context) {
         final theme = Theme.of(context);
         final onSurface = theme.colorScheme.onSurface;
-        final secondaryText = theme.textTheme.bodyMedium?.color?.withOpacity(0.65) ?? const Color(0xFF6B7280);
+        final secondaryText = theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.65) ?? const Color(0xFF6B7280);
 
         return AlertDialog(
           backgroundColor: theme.colorScheme.surface,
@@ -914,7 +1175,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
+                      border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2)),
                     ),
                     child: Text(
                       'No lectures available yet. Your teacher will add lecture links here.',
@@ -940,16 +1201,16 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           decoration: BoxDecoration(
                             color: theme.colorScheme.surfaceContainerHigh,
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: theme.dividerColor.withOpacity(0.25)),
+                            border: Border.all(color: theme.dividerColor.withValues(alpha: 0.25)),
                           ),
                           child: Row(
                             children: [
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                 decoration: BoxDecoration(
-                                  color: widget.accentColor.withOpacity(0.1),
+                                  color: widget.accentColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: widget.accentColor.withOpacity(0.6)),
+                                  border: Border.all(color: widget.accentColor.withValues(alpha: 0.6)),
                                 ),
                                 child: Text(
                                   'Lecture #$lectureNumber',
@@ -1039,7 +1300,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
             builder: (context) {
         final theme = Theme.of(context);
         final onSurface = theme.colorScheme.onSurface;
-        final secondaryText = theme.textTheme.bodyMedium?.color?.withOpacity(0.65) ?? const Color(0xFF6B7280);
+        final secondaryText = theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.65) ?? const Color(0xFF6B7280);
 
         return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -1050,7 +1311,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: theme.dividerColor.withOpacity(0.2)),
+              border: Border.all(color: theme.dividerColor.withValues(alpha: 0.2)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1062,7 +1323,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                     color: theme.colorScheme.surfaceContainerHighest,
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
                     border: Border(
-                      bottom: BorderSide(color: theme.dividerColor.withOpacity(0.2)),
+                      bottom: BorderSide(color: theme.dividerColor.withValues(alpha: 0.2)),
                     ),
                   ),
                   child: Row(
@@ -1070,7 +1331,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: theme.colorScheme.primary.withOpacity(0.12),
+                          color: theme.colorScheme.primary.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
@@ -1126,10 +1387,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           Container(
                             margin: const EdgeInsets.only(bottom: 20),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withOpacity(0.06),
+                              color: theme.colorScheme.primary.withValues(alpha: 0.06),
                               borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: theme.colorScheme.primary.withOpacity(0.2),
+                                color: theme.colorScheme.primary.withValues(alpha: 0.2),
                                 width: 1,
                               ),
                             ),
@@ -1143,7 +1404,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                       Container(
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
-                                          color: theme.colorScheme.primary.withOpacity(0.15),
+                                          color: theme.colorScheme.primary.withValues(alpha: 0.15),
                                           borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: Icon(
@@ -1208,10 +1469,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                         Container(
                           margin: const EdgeInsets.only(bottom: 16),
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.secondary.withOpacity(0.08),
+                            color: theme.colorScheme.secondary.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: theme.colorScheme.secondary.withOpacity(0.2),
+                              color: theme.colorScheme.secondary.withValues(alpha: 0.2),
                               width: 1,
                             ),
                           ),
@@ -1225,7 +1486,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                     Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: theme.colorScheme.secondary.withOpacity(0.15),
+                                        color: theme.colorScheme.secondary.withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Icon(
@@ -1258,7 +1519,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                   decoration: BoxDecoration(
                                     color: theme.colorScheme.surface,
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: theme.dividerColor.withOpacity(0.3)),
+                                    border: Border.all(color: theme.dividerColor.withValues(alpha: 0.3)),
                                   ),
                                   child: TextField(
                                     controller: linkController,
@@ -1311,10 +1572,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                         // Upload File Card
                         Container(
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.tertiary.withOpacity(0.08),
+                            color: theme.colorScheme.tertiary.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
-                              color: theme.colorScheme.tertiary.withOpacity(0.2),
+                              color: theme.colorScheme.tertiary.withValues(alpha: 0.2),
                               width: 1,
                             ),
                           ),
@@ -1328,7 +1589,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                     Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: theme.colorScheme.tertiary.withOpacity(0.15),
+                                        color: theme.colorScheme.tertiary.withValues(alpha: 0.15),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: Icon(
@@ -1361,10 +1622,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: theme.colorScheme.tertiary.withOpacity(0.12),
+                                      color: theme.colorScheme.tertiary.withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                        color: theme.colorScheme.tertiary.withOpacity(0.3),
+                                        color: theme.colorScheme.tertiary.withValues(alpha: 0.3),
                                       ),
                                     ),
                                     child: Row(
@@ -1881,7 +2142,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       style: TextStyle(color: bodyColor),
                       decoration: InputDecoration(
                         hintText: 'https://... ',
-                        hintStyle: TextStyle(color: secondaryColor.withOpacity(0.6)),
+                        hintStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.6)),
                         filled: true,
                         fillColor: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
                         enabledBorder: buildBorder(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
@@ -1901,7 +2162,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                         style: TextStyle(color: bodyColor),
                         decoration: InputDecoration(
                           hintText: 'e.g. 1',
-                          hintStyle: TextStyle(color: secondaryColor.withOpacity(0.6)),
+                          hintStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.6)),
                           filled: true,
                           fillColor: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
                           enabledBorder: buildBorder(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
@@ -1932,8 +2193,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                         ElevatedButton.icon(
                           onPressed: () async {
                             await _pickDateTime((dt, formatted) {
-                              mysqlDeadline = _toMysql(dt);
-                              setLocal(() => displayDeadline = formatted);
+                              setLocal(() {
+                                mysqlDeadline = _toMysql(dt);
+                                displayDeadline = formatted;
+                              });
                             });
                           },
                           icon: const Icon(Icons.event),
@@ -2039,8 +2302,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         const lightBorder = Color(0xFFE5E7EB);
         final titleColor = isLight ? primaryBlue : Colors.white;
         final bodyColor = isLight ? primaryBlue : Colors.white;
-        final secondaryColor = isLight ? primaryBlue : Colors.white.withValues(alpha: 0.75);
-        final fieldFillColor = isLight ? primaryBlue.withValues(alpha: 0.05) : Colors.white.withValues(alpha: 0.05);
+        final secondaryColor = isLight ? const Color(0xFF374151) : Colors.white.withValues(alpha: 0.7);
 
         OutlineInputBorder buildBorder(Color color) => OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -2108,9 +2370,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                             style: TextStyle(color: bodyColor),
                             decoration: InputDecoration(
                               hintText: 'e.g. 1',
-                              hintStyle: TextStyle(color: secondaryColor.withOpacity(0.6)),
+                              hintStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.6)),
                               filled: true,
-                              fillColor: fieldFillColor,
+                              fillColor: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
                               enabledBorder: buildBorder(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
                               focusedBorder: buildBorder(isLight ? primaryBlue : const Color(0xFF8B5CF6)),
                             ),
@@ -2131,9 +2393,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                             style: TextStyle(color: bodyColor),
                             decoration: InputDecoration(
                               hintText: 'e.g. 100',
-                              hintStyle: TextStyle(color: secondaryColor.withOpacity(0.6)),
+                              hintStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.6)),
                               filled: true,
-                              fillColor: fieldFillColor,
+                              fillColor: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
                               enabledBorder: buildBorder(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
                               focusedBorder: buildBorder(isLight ? primaryBlue : const Color(0xFF8B5CF6)),
                             ),
@@ -2141,7 +2403,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                           ),
                         ),
                         const Spacer(),
-                        Text('Students', style: GoogleFonts.inter(color: secondaryColor.withOpacity(0.85), fontWeight: FontWeight.w600)),
+                        Text('Students', style: GoogleFonts.inter(color: secondaryColor.withValues(alpha: 0.85), fontWeight: FontWeight.w600)),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -2308,11 +2570,11 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                     style: TextStyle(color: bodyColor),
                                     decoration: InputDecoration(
                                       labelText: 'Marks',
-                                      labelStyle: TextStyle(color: secondaryColor.withOpacity(0.7)),
+                                      labelStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.7)),
                                       suffixText: '/${totalCtrl.text}',
-                                      suffixStyle: TextStyle(color: secondaryColor.withOpacity(0.7)),
+                                      suffixStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.7)),
                                       filled: true,
-                                      fillColor: fieldFillColor,
+                                      fillColor: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
                                       enabledBorder: buildBorder(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
                                       focusedBorder: buildBorder(isLight ? primaryBlue : const Color(0xFF8B5CF6)),
                                     ),
@@ -2478,6 +2740,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
             _buildDiaryBox(),
             const SizedBox(height: 30),
 
+            // Planned Schedule
+            _buildPlannerSection(),
+            const SizedBox(height: 30),
+
             // Attendance Box (students only)
             if (!widget.isAdmin) ...[
               _buildAttendanceBox(),
@@ -2495,6 +2761,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
 
   @override
   void dispose() {
+    _plannerNotesController.dispose();
     _todayTopicsCtrl.dispose();
     _reviseTopicsCtrl.dispose();
     for (final t in _assignmentTimers) {
@@ -2539,10 +2806,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         _totalLectures = int.tryParse((meta['total_lectures'] ?? '0').toString()) ?? 0;
         final lj = meta['lectures_json'];
         
-        // Debug logging for data loading
-        print('[DEBUG] Loading lecture data from database:');
-        print('[DEBUG] Total lectures from DB: $_totalLectures');
-        print('[DEBUG] Lectures JSON from DB: $lj');
+        _dlog('[Lectures] Loading lecture data from database:');
+        _dlog('[Lectures] Total lectures from DB: $_totalLectures');
+        _dlog('[Lectures] Lectures JSON from DB: $lj');
         
         if (lj is String && lj.isNotEmpty) {
           try {
@@ -2555,14 +2821,14 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                       'name': (e['name'] ?? '').toString(),
                       'link': (e['link'] ?? '').toString(),
                     }));
-              print('[DEBUG] Loaded ${_lectures.length} lectures from database');
-              print('[DEBUG] Lectures with links: ${_getAvailableLecturesCount()}');
+              _dlog('[Lectures] Loaded ${_lectures.length} lectures from database');
+              _dlog('[Lectures] Lectures with links: ${_getAvailableLecturesCount()}');
             }
           } catch (e) {
-            print('[DEBUG] Error parsing lectures JSON: $e');
+            _dlog('[Lectures] Error parsing lectures JSON: $e');
           }
         } else {
-          print('[DEBUG] No lectures JSON data found in database');
+          _dlog('[Lectures] No lectures JSON data found in database');
         }
         // Prepare display strings from MySQL datetimes
         if (_upcomingLectureAt != null && _upcomingLectureAt!.isNotEmpty) {
@@ -2589,12 +2855,10 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
   Future<void> _saveSummary() async {
     if (!widget.isAdmin) return;
     try {
-      // Debug logging
-      print('[DEBUG] Saving lecture data to database:');
-      print('[DEBUG] Total lectures: $_totalLectures');
-      print('[DEBUG] Lectures count: ${_lectures.length}');
-      print('[DEBUG] Lectures data: $_lectures');
-      print('[DEBUG] Lectures JSON: ${_lectures.isEmpty ? 'null' : jsonEncode(_lectures)}');
+      _dlog('[Lectures] Saving lecture data to database:');
+      _dlog('[Lectures] Total lectures: $_totalLectures');
+      _dlog('[Lectures] Lectures count: ${_lectures.length}');
+      _dlog('[Lectures] Lectures JSON: ${_lectures.isEmpty ? 'null' : jsonEncode(_lectures)}');
       
       final res = await ApiService.saveCourseSummary(
         classId: widget.classId,
@@ -2612,7 +2876,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
         lecturesJson: _lectures.isEmpty ? null : jsonEncode(_lectures),
       );
       if (res['success'] == true) {
-        print('[DEBUG] Database save successful: $res');
+        _dlog('[Lectures] Database save successful: $res');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Summary saved')),
@@ -2623,7 +2887,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           _editingEnabled = false; // lock again after save
         });
       } else {
-        print('[DEBUG] Database save failed: $res');
+        _dlog('[Lectures] Database save failed: $res');
       }
     } catch (e) {
       if (mounted) {
@@ -2760,6 +3024,494 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     }
   }
 
+  String _formatIsoDate(DateTime date) {
+    final year = date.year.toString().padLeft(4, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final day = date.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  int? _parseNullableInt(Object? value) {
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  DateTime? _tryParsePlannerDate(Object? value) {
+    if (value == null) return null;
+    if (value is DateTime) {
+      return DateTime(value.year, value.month, value.day);
+    }
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return null;
+    try {
+      final parsed = DateTime.parse(raw.replaceFirst(' ', 'T'));
+      return DateTime(parsed.year, parsed.month, parsed.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DateTime _stripTime(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+  Iterable<DateTime> _enumerateDates(DateTime start, DateTime end) sync* {
+    DateTime cursor = _stripTime(start);
+    final last = _stripTime(end);
+    while (!cursor.isAfter(last)) {
+      yield cursor;
+      cursor = cursor.add(const Duration(days: 1));
+    }
+  }
+
+  String _normalizePlannerStatus(String? status) {
+    if (status == null) return 'scheduled';
+    final normalized = status.trim().toLowerCase();
+    if (normalized.isEmpty) return 'scheduled';
+    switch (normalized) {
+      case 'scheduled':
+      case 'in_progress':
+      case 'covered':
+      case 'completed':
+      case 'deferred':
+        return normalized;
+      default:
+        return 'scheduled';
+    }
+  }
+
+  Widget _buildPlannerSection() {
+    if (!widget.isAdmin) {
+      if (_loadingPlanner) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (_plannerError != null) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.errorContainer,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Text(
+            'Unable to load planned schedule: $_plannerError',
+            style: GoogleFonts.inter(
+              color: Theme.of(context).colorScheme.onErrorContainer,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      }
+
+      if (_plannerScheduledDates.isEmpty && (_plannerNotesController.text.isEmpty)) {
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.2)),
+          ),
+          child: Text(
+            'No planned schedule shared yet.',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              color: Theme.of(context).textTheme.bodyMedium?.color,
+            ),
+          ),
+        );
+      }
+
+      final DateFormat formatter = DateFormat('MMM d, yyyy');
+      final String dateLabel = () {
+        if (_plannerScheduledDates.isEmpty) return '';
+        if (_plannerScheduledDates.length == 1) {
+          return formatter.format(_plannerScheduledDates.first);
+        }
+        return '${formatter.format(_plannerScheduledDates.first)} → ${formatter.format(_plannerScheduledDates.last)}';
+      }();
+
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '📅 Planned Schedule',
+                  style: GoogleFonts.inter(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).textTheme.titleLarge?.color,
+                  ),
+                ),
+                if (dateLabel.isNotEmpty)
+                  Chip(
+                    label: Text(dateLabel),
+                    backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+                    labelStyle: GoogleFonts.inter(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_plannerNotesController.text.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.2)),
+                ),
+                child: Text(
+                  _plannerNotesController.text,
+                  style: GoogleFonts.inter(
+                    fontSize: 14,
+                    height: 1.4,
+                    color: Theme.of(context).textTheme.bodyMedium?.color,
+                  ),
+                ),
+              )
+            else
+              Text(
+                'No planned syllabus details shared yet.',
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  color: Theme.of(context).textTheme.bodySmall?.color,
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    final bool isLight = Theme.of(context).brightness == Brightness.light;
+    final Color cardColor = isLight ? const Color(0xFFE7E0DE) : Theme.of(context).colorScheme.surface;
+    final Color borderColor = isLight ? const Color(0xFFD9D2D0) : Theme.of(context).dividerColor.withValues(alpha: 0.3);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '📅 Planned Schedule',
+                style: GoogleFonts.inter(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: isLight ? const Color(0xFF1E3A8A) : Colors.white,
+                ),
+              ),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: _loadingPlanner ? null : _openPlannerDialog,
+                icon: const Icon(Icons.calendar_month),
+                label: const Text('Plan Schedule'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_loadingPlanner)
+            const Center(child: CircularProgressIndicator())
+          else if (_plannerError != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.errorContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _plannerError!,
+                style: GoogleFonts.inter(
+                  color: Theme.of(context).colorScheme.onErrorContainer,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          else if (_plannerPlanId == null && _plannerNotesController.text.isEmpty)
+            Text(
+              'No planner created yet. Use “Plan Schedule” to add syllabus coverage.',
+              style: GoogleFonts.inter(
+                fontSize: 14,
+                color: isLight
+                    ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75)
+                    : Colors.white.withValues(alpha: 0.85),
+              ),
+            )
+          else ...[
+            _buildPlannerSummaryCard(isLight: isLight),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlannerSummaryCard({required bool isLight}) {
+    final DateFormat formatter = DateFormat('MMM d, yyyy');
+    String dateLabel = '—';
+    if (_plannerScheduledDates.isNotEmpty) {
+      if (_plannerScheduledDates.length == 1) {
+        dateLabel = formatter.format(_plannerScheduledDates.first);
+      } else {
+        dateLabel = '${formatter.format(_plannerScheduledDates.first)} → ${formatter.format(_plannerScheduledDates.last)}';
+      }
+    } else if (_plannerSingleDate != null) {
+      dateLabel = formatter.format(_plannerSingleDate!);
+    } else if (_plannerRange != null) {
+      dateLabel = '${formatter.format(_plannerRange!.start)} → ${formatter.format(_plannerRange!.end)}';
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isLight ? Colors.white : Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isLight ? const Color(0xFFD9D2D0) : Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.calendar_today, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                dateLabel,
+                style: GoogleFonts.inter(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: isLight ? const Color(0xFF1E3A8A) : Colors.white,
+                ),
+              ),
+              if (_plannerFrequency != null && _plannerFrequency!.isNotEmpty) ...[
+                const SizedBox(width: 12),
+                Chip(
+                  label: Text(_plannerFrequency!),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _plannerNotesController.text.isNotEmpty
+                ? _plannerNotesController.text
+                : 'No syllabus notes yet. Edit the planner to add details.',
+            style: GoogleFonts.inter(
+              fontSize: 14,
+              height: 1.4,
+              color: isLight
+                  ? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.9)
+                  : Colors.white.withValues(alpha: 0.85),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openPlannerDialog() async {
+    final TextEditingController notesController =
+        TextEditingController(text: _plannerNotesController.text);
+    DateTime? selectedSingle = _plannerSingleDate;
+    DateTimeRange? selectedRange = _plannerRange;
+    String frequency = _plannerFrequency ?? 'Weekly';
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            Future<void> pickSingleDate() async {
+              final now = DateTime.now();
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: selectedSingle ?? now,
+                firstDate: DateTime(now.year - 1),
+                lastDate: DateTime(now.year + 2),
+              );
+              if (picked != null) {
+                setLocalState(() {
+                  selectedSingle = DateTime(picked.year, picked.month, picked.day);
+                  selectedRange = null;
+                });
+              }
+            }
+
+            Future<void> pickRange() async {
+              final now = DateTime.now();
+              final initialRange = selectedRange ??
+                  DateTimeRange(
+                    start: selectedSingle ?? now,
+                    end: (selectedSingle ?? now).add(const Duration(days: 6)),
+                  );
+              final range = await showDateRangePicker(
+                context: context,
+                firstDate: DateTime(now.year - 1),
+                lastDate: DateTime(now.year + 2),
+                initialDateRange: initialRange,
+              );
+              if (range != null) {
+                setLocalState(() {
+                  selectedRange = DateTimeRange(
+                    start: DateTime(range.start.year, range.start.month, range.start.day),
+                    end: DateTime(range.end.year, range.end.month, range.end.day),
+                  );
+                  selectedSingle = null;
+                });
+              }
+            }
+
+            Widget buildDateSelector() {
+              switch (frequency) {
+                case 'Daily':
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Selected Day'),
+                    subtitle: Text(
+                      selectedSingle != null
+                          ? DateFormat('EEE, MMM d yyyy').format(selectedSingle!)
+                          : 'Tap to pick day',
+                    ),
+                    trailing: const Icon(Icons.calendar_today),
+                    onTap: pickSingleDate,
+                  );
+                case 'Weekly':
+                case 'Monthly':
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(frequency == 'Weekly' ? 'Week Range' : 'Month Range'),
+                    subtitle: Text(
+                      selectedRange != null
+                          ? '${DateFormat('MMM d').format(selectedRange!.start)} → ${DateFormat('MMM d, yyyy').format(selectedRange!.end)}'
+                          : 'Tap to choose range',
+                    ),
+                    trailing: const Icon(Icons.calendar_month),
+                    onTap: pickRange,
+                  );
+                default:
+                  return const SizedBox.shrink();
+              }
+            }
+
+            return AlertDialog(
+              title: const Text('Plan Schedule'),
+              content: SizedBox(
+                width: 500,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: frequency,
+                      items: const [
+                        DropdownMenuItem(value: 'Daily', child: Text('Daily')),
+                        DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
+                        DropdownMenuItem(value: 'Monthly', child: Text('Monthly')),
+                      ],
+                      decoration: const InputDecoration(labelText: 'Frequency'),
+                      onChanged: (value) {
+                        if (value == null) return;
+                        setLocalState(() {
+                          frequency = value;
+                          if (value == 'Daily') {
+                            selectedRange = null;
+                          } else {
+                            selectedSingle = null;
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    buildDateSelector(),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: notesController,
+                      minLines: 4,
+                      maxLines: 8,
+                      decoration: const InputDecoration(
+                        labelText: 'Planned syllabus notes',
+                        alignLabelWithHint: true,
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    if (_plannerPlanId != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Existing plan will be updated.',
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          color: theme.textTheme.bodySmall?.color,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  onPressed: () async {
+                    if (frequency == 'Daily' && selectedSingle == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Pick the day for the daily plan.')),
+                      );
+                      return;
+                    }
+                    if ((frequency == 'Weekly' || frequency == 'Monthly') && selectedRange == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Pick the range for the plan.')),
+                      );
+                      return;
+                    }
+
+                    final resolvedSingle = frequency == 'Daily' ? selectedSingle : null;
+                    final resolvedRange = frequency != 'Daily' ? selectedRange : null;
+
+                    Navigator.pop(context);
+                    await _savePlannerPlan(
+                      frequency: frequency,
+                      singleDate: resolvedSingle,
+                      range: resolvedRange,
+                      notes: notesController.text,
+                    );
+                  },
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   DateTime? _parseMysql(String? mysql) {
     if (mysql == null || mysql.isEmpty) return null;
     try {
@@ -2767,6 +3519,13 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     } catch (_) {
       return null;
     }
+  }
+
+  Map<String, dynamic>? _castToStringMap(Object? value) {
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+    return null;
   }
 
   Future<void> _markQuizTaken() async {
@@ -2842,7 +3601,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
             style: TextStyle(color: bodyColor),
             decoration: InputDecoration(
               hintText: 'https://... ',
-              hintStyle: TextStyle(color: secondaryColor.withOpacity(0.6)),
+              hintStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.6)),
               filled: true,
               fillColor: isLight ? lightCard : Colors.white.withValues(alpha: 0.05),
               enabledBorder: border(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
@@ -2971,7 +3730,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
                                       style: TextStyle(color: isLight ? primaryBlue : bodyColor),
                                       decoration: InputDecoration(
                                         labelText: 'Lecture name',
-                                        suffixStyle: TextStyle(color: secondaryColor.withOpacity(0.7)),
+                                        suffixStyle: TextStyle(color: secondaryColor.withValues(alpha: 0.7)),
                                       filled: true,
                                       fillColor: fieldFillColor,
                                         enabledBorder: buildBorder(isLight ? lightBorder : Colors.white.withValues(alpha: 0.2)),
@@ -3117,41 +3876,91 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           : null,
     );
 
+    final quizExtra = widget.isAdmin
+        ? (showTakenTop
+            ? SizedBox(
+                width: double.infinity,
+                height: 36,
+                child: ElevatedButton(
+                  onPressed: _markQuizTaken,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF8B5CF6),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: const Text('Mark Quiz Taken'),
+                ),
+              )
+            : ((_lastQuizTakenAt != null && _lastQuizTakenAt!.isNotEmpty)
+                ? Text(
+                    'Taken #${_lastQuizNumber ?? ''} on ${_displayFromMysql(_lastQuizTakenAt!)}',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withValues(alpha: 0.85)),
+                  )
+                : null))
+        : ((_nextQuizTopic != null && _nextQuizTopic!.isNotEmpty)
+            ? Text(
+                _nextQuizTopic!,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withValues(alpha: 0.85)),
+              )
+            : null);
+
     final quizBox = _buildInfoBox(
       value: (_nextQuizDateTime ?? (widget.isAdmin ? '—' : '00/00/00, 00:00 AM/PM')),
       label: 'Quiz Details',
       color: const Color(0xFFF59E0B),
-      onTap: widget.isAdmin ? _openQuizMenuOrDialog : null,
-      extra: widget.isAdmin
-          ? (showTakenTop
-              ? SizedBox(
-                  width: double.infinity,
-                  height: 36,
-                  child: ElevatedButton(
-                    onPressed: _markQuizTaken,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B5CF6),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                    child: const Text('Mark Quiz Taken'),
-                  ),
-                )
-              : ((_lastQuizTakenAt != null && _lastQuizTakenAt!.isNotEmpty)
-                  ? Text(
-                      'Taken #${_lastQuizNumber ?? ''} on ${_displayFromMysql(_lastQuizTakenAt!)}',
-                      textAlign: TextAlign.center,
-                      style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withValues(alpha: 0.85)),
-                    )
-                  : null))
-          : ((_nextQuizTopic != null && _nextQuizTopic!.isNotEmpty)
-              ? Text(
-                  _nextQuizTopic!,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withValues(alpha: 0.85)),
-                )
-              : null),
+      onTap: () => _openAssessmentPage(initialTab: 'Quiz'),
+      extra: quizExtra,
     );
+
+    final assignmentStatusLine = (_lastAssignmentTakenAt != null && _lastAssignmentTakenAt!.isNotEmpty)
+        ? () {
+            final takenDisp = _displayFromMysql(_lastAssignmentTakenAt!);
+            final numText = _lastAssignmentNumber != null ? '#$_lastAssignmentNumber' : '';
+            return 'Taken $numText on $takenDisp';
+          }()
+        : '';
+
+    final assignmentExtra = widget.isAdmin
+        ? () {
+            final assignAt = _parseMysql(_nextAssignmentDeadline);
+            final now = DateTime.now();
+            final lastAssignTaken = _parseMysql(_lastAssignmentTakenAt);
+            final showMarkBtn = assignAt != null &&
+                (now.isAfter(assignAt) || now.isAtSameMomentAs(assignAt)) &&
+                (lastAssignTaken == null || lastAssignTaken.isBefore(assignAt));
+
+            if (!showMarkBtn && assignmentStatusLine.isEmpty) return null;
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (assignmentStatusLine.isNotEmpty)
+                  Text(
+                    assignmentStatusLine,
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withValues(alpha: 0.85)),
+                  ),
+                if (showMarkBtn) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 36,
+                    child: ElevatedButton(
+                      onPressed: _markAssignmentTaken,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF8B5CF6),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                      child: const Text('Mark Assignment Taken'),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          }()
+        : null;
 
     final assignmentBox = _buildInfoBox(
       value: (_nextAssignmentDeadline != null && _nextAssignmentDeadline!.isNotEmpty)
@@ -3159,110 +3968,8 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           : (widget.isAdmin ? '—' : '00/00/00, 00:00 AM/PM'),
       label: 'Next Assignment',
       color: const Color(0xFF10B981),
-      onTap: widget.isAdmin
-          ? () async {
-              final hasCurrent = (_nextAssignmentDeadline != null && _nextAssignmentDeadline!.isNotEmpty) ||
-                  (_nextAssignmentLink != null && _nextAssignmentLink!.isNotEmpty);
-              if (!hasCurrent) {
-                final res = await _promptForAssignmentLinkAndDeadline(context);
-                if (res != null) {
-                  setState(() {
-                    _nextAssignmentLink = res['link'];
-                    _nextAssignmentDeadline = res['deadline'];
-                    _nextAssignmentNumber = res['number'] as int?;
-                  });
-                  await _saveSummaryWithDeadline();
-                }
-                return;
-              }
-              final choice = await showDialog<String>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  backgroundColor: const Color(0xFF0B1222),
-                  title: Text('Assignment Options', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700)),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ListTile(
-                        title: const Text('Edit Current Assignment'),
-                        textColor: Colors.white,
-                        onTap: () => Navigator.pop(context, 'edit'),
-                      ),
-                      ListTile(
-                        title: const Text('Add Next Assignment'),
-                        textColor: Colors.white,
-                        onTap: () => Navigator.pop(context, 'next'),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-              if (choice == null) return;
-              if (choice == 'edit') {
-                final res = await _promptForAssignmentLinkAndDeadline(context);
-                if (res != null) {
-                  setState(() {
-                    _nextAssignmentLink = res['link'];
-                    _nextAssignmentDeadline = res['deadline'];
-                    _nextAssignmentNumber = res['number'] as int?;
-                  });
-                  await _saveSummaryWithDeadline();
-                }
-              } else if (choice == 'next') {
-                final res = await _promptForAssignmentLinkAndDeadline(context);
-                if (res != null) {
-                  setState(() {
-                    _nextAssignmentLink = res['link'];
-                    _nextAssignmentDeadline = res['deadline'];
-                    _nextAssignmentNumber = res['number'] as int?;
-                  });
-                  await _saveSummaryWithDeadline();
-                }
-              }
-            }
-          : null,
-      extra: () {
-        final now = DateTime.now();
-        final assignAt = _parseMysql(_nextAssignmentDeadline);
-        final lastAssignTaken = _parseMysql(_lastAssignmentTakenAt);
-        final showMarkBtn = widget.isAdmin && assignAt != null && (now.isAfter(assignAt) || now.isAtSameMomentAs(assignAt)) && (lastAssignTaken == null || lastAssignTaken.isBefore(assignAt));
-
-        String statusLine = '';
-        if (_lastAssignmentTakenAt != null && _lastAssignmentTakenAt!.isNotEmpty) {
-          final takenDisp = _displayFromMysql(_lastAssignmentTakenAt!);
-          final numText = _lastAssignmentNumber != null ? '#$_lastAssignmentNumber' : '';
-          statusLine = 'Taken $numText on $takenDisp';
-        }
-
-        if (!showMarkBtn && statusLine.isEmpty) return null;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (statusLine.isNotEmpty)
-              Text(
-                statusLine,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(fontSize: 12, color: Colors.white.withValues(alpha: 0.85)),
-              ),
-            if (showMarkBtn) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                height: 36,
-                child: ElevatedButton(
-                  onPressed: _markAssignmentTaken,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B5CF6),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                  ),
-                  child: const Text('Mark Assignment Taken'),
-                ),
-              ),
-            ],
-          ],
-        );
-      }(),
+      onTap: () => _openAssessmentPage(initialTab: 'Assignment'),
+      extra: assignmentExtra,
     );
 
     final lecturesBox = _buildInfoBox(
@@ -3793,6 +4500,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
 
 
   Widget _buildUpcomingEvents() {
+    if (widget.isAdmin) {
+      return const SizedBox.shrink();
+    }
     const primaryBlue = Color(0xFF1E3A8A);
     const lightCard = Color(0xFFE7E0DE);
     const lightBorder = Color(0xFFD9D2D0);
@@ -3814,7 +4524,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           border: Border.all(color: isLight ? lightBorder : accent.withValues(alpha: 0.45), width: 2),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(isLight ? 0.04 : 0.18),
+              color: Colors.black.withValues(alpha: isLight ? 0.04 : 0.18),
               blurRadius: 16,
               offset: const Offset(0, 10),
             ),
@@ -3888,21 +4598,6 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           ),
         ),
       ],
-      if (widget.isAdmin) ...[
-        SizedBox(height: isMobile ? 12 : 16),
-        SizedBox(
-          width: double.infinity,
-          height: 40,
-          child: ElevatedButton(
-            onPressed: () => _openMarksDialog('Quiz'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF8B5CF6),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Enter Quiz Marks'),
-          ),
-        ),
-      ],
     ];
 
     final assignmentBody = <Widget>[
@@ -3927,21 +4622,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
           ),
         ),
       ],
-      if (widget.isAdmin) ...[
-        SizedBox(height: isMobile ? 12 : 16),
-        SizedBox(
-          width: double.infinity,
-          height: 40,
-          child: ElevatedButton(
-            onPressed: () => _openMarksDialog('Assignment'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Enter Assignment Marks'),
-          ),
-        ),
-      ] else ...[
+      if (!widget.isAdmin) ...[
         SizedBox(height: isMobile ? 12 : 16),
         Row(
           children: [
@@ -4003,7 +4684,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       accent: const Color(0xFF8B5CF6),
       title: quizTitle,
       body: quizBody,
-      onTap: widget.isAdmin ? null : _openStudentQuizDialog,
+      onTap: () => _openAssessmentPage(initialTab: 'Quiz'),
     );
 
     final assignmentCard = buildCard(
@@ -4011,7 +4692,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       accent: const Color(0xFF10B981),
       title: assignmentTitle,
       body: assignmentBody,
-      onTap: widget.isAdmin ? null : () => _showAssignmentOptionsDialog(context),
+      onTap: () => _openAssessmentPage(initialTab: 'Assignment'),
     );
 
     if (isMobile) {
@@ -4035,4 +4716,16 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     );
   }
 
+  void _openAssessmentPage({required String initialTab}) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AssessmentsManageScreen(
+          initialTab: initialTab,
+          planId: _plannerPlanId,
+          classId: _classIdEff,
+          subjectId: _subjectIdEff,
+        ),
+      ),
+    );
+  }
 }

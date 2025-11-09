@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/api_service.dart';
 import 'home.dart';
@@ -7,23 +8,30 @@ class CourseAssignmentScreen extends StatefulWidget {
   const CourseAssignmentScreen({super.key});
 
   // Global key to access the state from parent (Home) for mobile save action
-  static final GlobalKey<_CourseAssignmentScreenState> globalKey =
-      GlobalKey<_CourseAssignmentScreenState>();
+  static final GlobalKey<CourseAssignmentScreenState> globalKey =
+      GlobalKey<CourseAssignmentScreenState>();
 
   @override
-  State<CourseAssignmentScreen> createState() => _CourseAssignmentScreenState();
+  State<CourseAssignmentScreen> createState() => CourseAssignmentScreenState();
 }
 
-class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
-  // Sentinel values for placeholder dropdown entries (must never equal real class names)
-  static const String _kPlaceholderLoad = '__tap_to_load__';
-  static const String _kPlaceholderLoading = '__loading__';
+class CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
+  static const Color _primaryBlue = Color(0xFF1E3A8A);
+  static const Color _accentBlue = Color(0xFF60A5FA);
+  static const Color _lightShell = Color(0xFFE7E0DE);
+  static const Color _lightSurface = Color(0xFFF7F5F4);
+
   String? _selectedTeacher;
   String? _selectedLevel;
   String? _selectedClass;
   final List<String> _selectedCourses = [];
   bool _makeClassTeacher = false;
   String? _currentClassTeacherOf; // existing class if any
+
+  final TextEditingController _teacherController = TextEditingController();
+  final TextEditingController _classController = TextEditingController();
+  bool _suspendTeacherTextListener = false;
+  bool _suspendClassTextListener = false;
 
   // Loading and error states
   bool _isLoading = true;
@@ -50,6 +58,8 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
   // Loaded classes and subjects from backend
   List<String> _fetchedClasses = [];
   List<Course> _availableCourses = [];
+  final Map<String, _AssignmentMeta> _assignmentsBySubject = {};
+  final Set<String> _subjectsAssignedToOtherTeachers = {};
 
   List<String> get _availableClasses {
     if (_selectedLevel == null) return [];
@@ -65,6 +75,13 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
   void initState() {
     super.initState();
     _loadTeachers();
+  }
+
+  @override
+  void dispose() {
+    _teacherController.dispose();
+    _classController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadTeachers() async {
@@ -84,6 +101,19 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                 ))
             .toList();
         _isLoading = false;
+
+        final selected = _teacherById(_selectedTeacher);
+        if (selected != null) {
+          _setTeacherControllerText(selected.name);
+        } else {
+          if (_selectedTeacher != null) {
+            _selectedTeacher = null;
+            _makeClassTeacher = false;
+            _currentClassTeacherOf = null;
+            _selectedCourses.clear();
+          }
+          _clearTeacherController();
+        }
       });
     } catch (e) {
       setState(() {
@@ -108,6 +138,44 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
     }
   }
 
+  Teacher? _teacherById(String? id) {
+    if (id == null) return null;
+    for (final teacher in _teachers) {
+      if (teacher.id == id) {
+        return teacher;
+      }
+    }
+    return null;
+  }
+
+  void _setTeacherControllerText(String text) {
+    _suspendTeacherTextListener = true;
+    _teacherController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  void _clearTeacherController() {
+    if (_teacherController.text.isEmpty) return;
+    _suspendTeacherTextListener = true;
+    _teacherController.clear();
+  }
+
+  void _setClassControllerText(String text) {
+    _suspendClassTextListener = true;
+    _classController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  void _clearClassController() {
+    if (_classController.text.isEmpty) return;
+    _suspendClassTextListener = true;
+    _classController.clear();
+  }
+
   Future<void> _loadClassesForLevel(String level) async {
     try {
       setState(() {
@@ -117,7 +185,20 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
       setState(() {
         _fetchedClasses =
             classes.map((c) => (c['name'] ?? '').toString()).toList();
+
+        if (_selectedClass != null && !_fetchedClasses.contains(_selectedClass)) {
+          _selectedClass = null;
+          _selectedCourses.clear();
+          _availableCourses = [];
+          _makeClassTeacher = false;
+        }
       });
+
+      if (_selectedClass != null) {
+        _setClassControllerText(_selectedClass!);
+      } else {
+        _clearClassController();
+      }
     } catch (e) {
       _showError('Failed to load classes: $e');
     } finally {
@@ -136,19 +217,72 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
         _availableCourses = [];
         _selectedCourses.clear();
       });
-      final subjects = await ApiService.getClassSubjects(
-        level: level,
-        className: className,
-      );
+
+      final results = await Future.wait([
+        ApiService.getClassSubjects(level: level, className: className),
+        ApiService.getAssignments(level: level, className: className),
+      ]);
+
+      final subjects = List<Map<String, dynamic>>.from(results[0] as List);
+      final assignments = List<Map<String, dynamic>>.from(results[1] as List);
+
+      final courses = subjects
+          .map((s) => Course(
+                id: (s['subject_id'] ?? s['id'] ?? '').toString(),
+                name: (s['name'] ?? '').toString(),
+                code: (s['code'] ?? s['name'] ?? '').toString(),
+                credits: 0,
+              ))
+          .toList();
+
+      final assignmentsBySubject = <String, _AssignmentMeta>{};
+      final subjectsForSelectedTeacher = <String>{};
+      final subjectsAssignedToOthers = <String>{};
+
+      for (final assignment in assignments) {
+        final subjectId = _normalizeId(
+          assignment['subject_id'] ?? assignment['subjectId'],
+        );
+        if (subjectId == null) continue;
+
+        final teacherId = _normalizeId(
+          assignment['teacher_user_id'] ?? assignment['teacherId'],
+        );
+        final assignmentId = _normalizeId(assignment['id']);
+        final teacherNameRaw =
+            assignment['teacher_name'] ?? assignment['teacherName'];
+
+        assignmentsBySubject[subjectId] = _AssignmentMeta(
+          assignmentId: assignmentId,
+          teacherId: teacherId,
+          teacherName: teacherNameRaw == null
+              ? null
+              : teacherNameRaw.toString().trim().isEmpty
+                  ? null
+                  : teacherNameRaw.toString(),
+        );
+
+        if (teacherId != null && teacherId.isNotEmpty) {
+          if (_selectedTeacher != null && teacherId == _selectedTeacher) {
+            subjectsForSelectedTeacher.add(subjectId);
+          } else {
+            subjectsAssignedToOthers.add(subjectId);
+          }
+        }
+      }
+
+      if (!mounted) return;
       setState(() {
-        _availableCourses = subjects
-            .map((s) => Course(
-                  id: (s['subject_id'] ?? s['id'] ?? '').toString(),
-                  name: (s['name'] ?? '').toString(),
-                  code: (s['code'] ?? s['name'] ?? '').toString(),
-                  credits: 0,
-                ))
-            .toList();
+        _availableCourses = courses;
+        _assignmentsBySubject
+          ..clear()
+          ..addAll(assignmentsBySubject);
+        _subjectsAssignedToOtherTeachers
+          ..clear()
+          ..addAll(subjectsAssignedToOthers);
+        _selectedCourses
+          ..clear()
+          ..addAll(subjectsForSelectedTeacher);
       });
     } catch (e) {
       _showError('Failed to load class subjects: $e');
@@ -159,6 +293,13 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
         });
       }
     }
+  }
+
+  String? _normalizeId(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value.toString();
+    final trimmed = value.toString().trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   @override
@@ -365,17 +506,19 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
       ),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE7E0DE),
+        color: isDark ? const Color(0xFF1E293B) : _lightShell,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFD9D2D0),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : _primaryBlue.withValues(alpha: 0.08),
           width: 1,
         ),
         boxShadow: isDark
             ? null
             : [
                 BoxShadow(
-                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.12),
+                  color: _primaryBlue.withValues(alpha: 0.12),
                   blurRadius: 14,
                   offset: const Offset(0, 6),
                 ),
@@ -391,9 +534,7 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
               style: GoogleFonts.inter(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : const Color(0xFF1E3A8A),
+                color: isDark ? Colors.white : _primaryBlue,
               ),
             ),
             const SizedBox(height: 24),
@@ -421,6 +562,7 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
   }
 
   Widget _buildTeacherSelection() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -429,91 +571,149 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
           style: GoogleFonts.inter(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: Theme.of(context).brightness == Brightness.dark
+            color: isDark
                 ? Colors.white.withValues(alpha: 0.9)
-                : const Color(0xFF1E3A8A),
+                : _primaryBlue,
           ),
         ),
         const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF0F172A)
-                : const Color(0xFFF9FAFB),
+            color: isDark ? const Color(0xFF0F172A) : _lightSurface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: Theme.of(context).brightness == Brightness.dark
+              color: isDark
                   ? Colors.white.withValues(alpha: 0.1)
-                  : const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                  : _primaryBlue.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
-          child: DropdownButtonFormField<String>(
-            initialValue: _selectedTeacher,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-            isExpanded: true,
-            dropdownColor: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF1E293B)
-                : Colors.white,
-            style: GoogleFonts.inter(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : const Color(0xFF1E3A8A),
-            ),
-            hint: Text(
-              'Choose a teacher...',
-              style: GoogleFonts.inter(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white.withValues(alpha: 0.6)
-                    : const Color(0xFF6B7280),
+          child: TypeAheadField<Teacher>(
+            controller: _teacherController,
+            hideOnEmpty: true,
+            debounceDuration: const Duration(milliseconds: 200),
+            suggestionsCallback: (pattern) {
+              final query = pattern.trim().toLowerCase();
+              Iterable<Teacher> source = _teachers;
+              if (query.isNotEmpty) {
+                source = source.where((teacher) {
+                  final name = teacher.name.toLowerCase();
+                  final email = teacher.email.toLowerCase();
+                  return name.contains(query) || email.contains(query);
+                });
+              }
+              return source.take(10).toList();
+            },
+            decorationBuilder: (context, child) => Material(
+              color: isDark ? const Color(0xFF0F172A) : Colors.white,
+              elevation: 6,
+              borderRadius: BorderRadius.circular(12),
+              shadowColor: Colors.black.withValues(alpha: 0.2),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: child,
               ),
             ),
-            items: _teachers.isEmpty
-                ? [
-                    DropdownMenuItem<String>(
-                      value: null,
-                      child: Text(
-                        'No teachers available',
+            itemBuilder: (context, teacher) {
+              return ListTile(
+                dense: true,
+                title: Text(
+                  teacher.name,
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : _primaryBlue,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: teacher.email.isNotEmpty
+                    ? Text(
+                        teacher.email,
                         style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).brightness == Brightness.dark
+                          fontSize: 12,
+                          color: isDark
                               ? Colors.white.withValues(alpha: 0.6)
-                              : const Color(0xFF6B7280),
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ]
-                : _teachers.map((teacher) {
-                    return DropdownMenuItem<String>(
-                      value: teacher.id,
-                      child: Text(
-                        teacher.name,
-                        style: GoogleFonts.inter(
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : const Color(0xFF1E3A8A),
-                          fontSize: 14,
+                              : _primaryBlue.withValues(alpha: 0.6),
                         ),
                         overflow: TextOverflow.ellipsis,
-                      ),
-                    );
-                  }).toList(),
-            onChanged: (value) {
+                      )
+                    : null,
+              );
+            },
+            emptyBuilder: (context) => Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _teachers.isEmpty
+                    ? 'No teachers available'
+                    : 'No teacher found',
+                style: GoogleFonts.inter(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.7)
+                      : _primaryBlue.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+            onSelected: (teacher) {
+              _setTeacherControllerText(teacher.name);
               setState(() {
-                _selectedTeacher = value;
+                _selectedTeacher = teacher.id;
                 _selectedCourses.clear();
                 _makeClassTeacher = false;
                 _currentClassTeacherOf = null;
               });
-              if (value != null) {
-                _loadExistingClassTeacher(value);
+              _loadExistingClassTeacher(teacher.id);
+              if (_selectedLevel != null && _selectedClass != null) {
+                _loadCoursesForClass(_selectedLevel!, _selectedClass!);
               }
+            },
+            builder: (context, controller, focusNode) {
+              return TextField(
+                controller: controller,
+                focusNode: focusNode,
+                enabled: _teachers.isNotEmpty,
+                style: GoogleFonts.inter(
+                  color:
+                      isDark ? Colors.white : _primaryBlue,
+                  fontWeight: FontWeight.w500,
+                ),
+                onChanged: (value) {
+                  if (_suspendTeacherTextListener) {
+                    _suspendTeacherTextListener = false;
+                    return;
+                  }
+                  if (_selectedTeacher != null) {
+                    final selected = _teacherById(_selectedTeacher);
+                    if (selected == null || selected.name != value) {
+                      setState(() {
+                        _selectedTeacher = null;
+                        _makeClassTeacher = false;
+                        _currentClassTeacherOf = null;
+                        _selectedCourses.clear();
+                      });
+                    }
+                  }
+                },
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: _teachers.isEmpty
+                      ? 'No teachers available'
+                      : 'Search teacher by name...',
+                  hintStyle: GoogleFonts.inter(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.6)
+                        : _primaryBlue.withValues(alpha: 0.5),
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.6)
+                        : _primaryBlue.withValues(alpha: 0.4),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+              );
             },
           ),
         ),
@@ -532,7 +732,7 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
             fontWeight: FontWeight.w600,
             color: Theme.of(context).brightness == Brightness.dark
                 ? Colors.white.withValues(alpha: 0.9)
-                : const Color(0xFF1E3A8A),
+                : _primaryBlue,
           ),
         ),
         const SizedBox(height: 12),
@@ -540,12 +740,12 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
           decoration: BoxDecoration(
             color: Theme.of(context).brightness == Brightness.dark
                 ? const Color(0xFF0F172A)
-                : const Color(0xFFF9FAFB),
+                : _lightSurface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: Theme.of(context).brightness == Brightness.dark
                   ? Colors.white.withValues(alpha: 0.1)
-                  : const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                  : _primaryBlue.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
@@ -563,14 +763,14 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
             style: GoogleFonts.inter(
               color: Theme.of(context).brightness == Brightness.dark
                   ? Colors.white
-                  : const Color(0xFF111827),
+                  : _primaryBlue,
             ),
             hint: Text(
               'Choose education level...',
               style: GoogleFonts.inter(
                 color: Theme.of(context).brightness == Brightness.dark
                     ? Colors.white.withValues(alpha: 0.6)
-                    : const Color(0xFF6B7280),
+                    : _primaryBlue.withValues(alpha: 0.5),
               ),
             ),
             items: _educationLevels.keys.map((level) {
@@ -581,7 +781,7 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                   style: GoogleFonts.inter(
                     color: Theme.of(context).brightness == Brightness.dark
                         ? Colors.white
-                        : const Color(0xFF1E3A8A),
+                        : _primaryBlue,
                   ),
                 ),
               );
@@ -595,6 +795,7 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                 _availableCourses = [];
                 _coursesLoading = false;
               });
+              _clearClassController();
               if (value != null) {
                 await _loadClassesForLevel(value);
               }
@@ -606,9 +807,7 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
   }
 
   Widget _buildClassSelection() {
-    // Ensure the current value is valid w.r.t. items to avoid assertion
-    final String? effectiveClassValue =
-        (_availableClasses.contains(_selectedClass)) ? _selectedClass : null;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -628,112 +827,150 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
             color: _selectedLevel == null
                 ? (Theme.of(context).brightness == Brightness.dark
                     ? const Color(0xFF0F172A).withValues(alpha: 0.5)
-                    : const Color(0xFFF9FAFB).withValues(alpha: 0.5))
+                    : _lightSurface.withValues(alpha: 0.65))
                 : (Theme.of(context).brightness == Brightness.dark
                     ? const Color(0xFF0F172A)
-                    : const Color(0xFFF9FAFB)),
+                    : _lightSurface),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: Theme.of(context).brightness == Brightness.dark
                   ? Colors.white.withValues(alpha: 0.1)
-                  : const Color(0xFF1E3A8A).withValues(alpha: 0.3),
+                  : _primaryBlue.withValues(alpha: 0.2),
               width: 1,
             ),
           ),
-          child: DropdownButtonFormField<String>(
-            initialValue: effectiveClassValue,
-            decoration: const InputDecoration(
-              border: InputBorder.none,
-              contentPadding:
-                  EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            ),
-            isExpanded: true,
-            menuMaxHeight: 280,
-            dropdownColor: Theme.of(context).brightness == Brightness.dark
-                ? const Color(0xFF1E293B)
-                : Colors.white,
-            style: GoogleFonts.inter(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.white
-                  : const Color(0xFF111827),
-            ),
-            hint: Text(
-              _selectedLevel == null
-                  ? 'Select education level first...'
-                  : (_classesLoading
-                      ? 'Loading classes...'
-                      : (_availableClasses.isEmpty
-                          ? 'Tap to load classes'
-                          : 'Choose a class...')),
-              style: GoogleFonts.inter(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white.withValues(alpha: 0.6)
-                    : const Color(0xFF6B7280),
+          child: TypeAheadField<String>(
+            controller: _classController,
+            hideOnEmpty: true,
+            debounceDuration: const Duration(milliseconds: 150),
+            suggestionsCallback: (pattern) {
+              if (_selectedLevel == null || _classesLoading) {
+                return const <String>[];
+              }
+              final query = pattern.trim().toLowerCase();
+              Iterable<String> source = _availableClasses;
+              if (query.isNotEmpty) {
+                source = source.where((className) =>
+                    className.toLowerCase().contains(query));
+              }
+              return source.take(20).toList();
+            },
+            decorationBuilder: (context, child) => Material(
+              color: isDark ? const Color(0xFF0F172A) : Colors.white,
+              elevation: 6,
+              borderRadius: BorderRadius.circular(12),
+              shadowColor: Colors.black.withValues(alpha: 0.2),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: child,
               ),
             ),
-            items: (_availableClasses.isNotEmpty
-                    ? _availableClasses.map((c) => DropdownMenuItem<String>(
-                          value: c,
-                          child: Text(
-                            c,
-                            style: GoogleFonts.inter(
-                              color: Theme.of(context).brightness ==
-                                      Brightness.dark
-                                  ? Colors.white
-                                  : const Color(0xFF1E3A8A),
-                            ),
-                          ),
-                        ))
-                    : (_selectedLevel != null
-                        ? <DropdownMenuItem<String>>[
-                            DropdownMenuItem<String>(
-                              value: _classesLoading
-                                  ? _kPlaceholderLoading
-                                  : _kPlaceholderLoad,
-                              child: Text(
-                                _classesLoading
-                                    ? 'Loading…'
-                                    : 'Tap to load classes',
-                                style: GoogleFonts.inter(
-                                  color: Theme.of(context).brightness ==
-                                          Brightness.dark
-                                      ? Colors.white
-                                      : const Color(0xFF1E3A8A),
-                                ),
-                              ),
-                            ),
-                          ]
-                        : const <DropdownMenuItem<String>>[]))
-                .toList(),
-            onTap: () async {
-              if (_selectedLevel != null &&
-                  !_classesLoading &&
-                  _availableClasses.isEmpty) {
-                await _loadClassesForLevel(_selectedLevel!);
+            itemBuilder: (context, className) {
+              return ListTile(
+                dense: true,
+                title: Text(
+                  className,
+                  style: GoogleFonts.inter(
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? Colors.white : _primaryBlue,
+                  ),
+                ),
+              );
+            },
+            emptyBuilder: (context) => Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(
+                _selectedLevel == null
+                    ? 'Select education level first'
+                    : (_classesLoading
+                        ? 'Loading classes...'
+                        : _availableClasses.isEmpty
+                            ? 'No classes available'
+                            : 'No class found'),
+                style: GoogleFonts.inter(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.7)
+                      : _primaryBlue.withValues(alpha: 0.6),
+                ),
+              ),
+            ),
+            onSelected: (className) {
+              _setClassControllerText(className);
+              setState(() {
+                _selectedClass = className;
+              });
+              if (_selectedLevel != null) {
+                _loadCoursesForClass(_selectedLevel!, className);
               }
             },
-            onChanged: _selectedLevel == null
-                ? null
-                : (value) {
-                    if (value == null) return;
-                    if (value == _kPlaceholderLoad ||
-                        value == _kPlaceholderLoading) {
-                      // Reset selection to null to avoid assertion, and trigger loading
+            builder: (context, controller, focusNode) {
+              return TextField(
+                controller: controller,
+                focusNode: focusNode,
+                readOnly: _selectedLevel == null,
+                style: GoogleFonts.inter(
+                  color:
+                      isDark ? Colors.white : _primaryBlue,
+                  fontWeight: FontWeight.w500,
+                ),
+                onTap: () {
+                  if (_selectedLevel != null &&
+                      !_classesLoading &&
+                      _availableClasses.isEmpty) {
+                    _loadClassesForLevel(_selectedLevel!);
+                  }
+                },
+                onChanged: (value) {
+                  if (_suspendClassTextListener) {
+                    _suspendClassTextListener = false;
+                    return;
+                  }
+                  if (_selectedClass != null) {
+                    if (value != _selectedClass) {
                       setState(() {
                         _selectedClass = null;
+                        _selectedCourses.clear();
+                        _availableCourses = [];
+                        _makeClassTeacher = false;
                       });
-                      if (!_classesLoading && _availableClasses.isEmpty) {
-                        _loadClassesForLevel(_selectedLevel!);
-                      }
-                      return;
                     }
-                    setState(() {
-                      _selectedClass = value;
-                    });
-                    if (value.isNotEmpty) {
-                      _loadCoursesForClass(_selectedLevel!, value);
-                    }
-                  },
+                  }
+                },
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: _selectedLevel == null
+                      ? 'Select education level first...'
+                      : (_classesLoading
+                          ? 'Loading classes...'
+                          : 'Search class by name...'),
+                  hintStyle: GoogleFonts.inter(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.6)
+                        : _primaryBlue.withValues(alpha: 0.5),
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.6)
+                        : _primaryBlue.withValues(alpha: 0.4),
+                  ),
+                  suffixIcon: _classesLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : null,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ],
@@ -748,17 +985,19 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
       ),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE7E0DE),
+        color: isDark ? const Color(0xFF1E293B) : _lightShell,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? Colors.white.withValues(alpha: 0.1) : const Color(0xFFD9D2D0),
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : _primaryBlue.withValues(alpha: 0.08),
           width: 1,
         ),
         boxShadow: isDark
             ? null
             : [
                 BoxShadow(
-                  color: const Color(0xFF1E3A8A).withValues(alpha: 0.12),
+                  color: _primaryBlue.withValues(alpha: 0.12),
                   blurRadius: 14,
                   offset: const Offset(0, 6),
                 ),
@@ -778,9 +1017,10 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                     style: GoogleFonts.inter(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).brightness == Brightness.dark
-                          ? Colors.white
-                          : const Color(0xFF111827),
+                      color:
+                          Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : _primaryBlue,
                     ),
                   ),
                   const Spacer(),
@@ -789,14 +1029,14 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                        color: _accentBlue.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         '${_teachers.firstWhere((t) => t.id == _selectedTeacher, orElse: () => Teacher(id: '', name: 'Unknown', email: '')).name} → $_selectedLevel → $_selectedClass',
                         style: GoogleFonts.inter(
                           fontSize: 12,
-                          color: const Color(0xFF8B5CF6),
+                          color: _accentBlue,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -812,14 +1052,14 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
+                    color: _accentBlue.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '${_teachers.firstWhere((t) => t.id == _selectedTeacher, orElse: () => Teacher(id: '', name: 'Unknown', email: '')).name} → $_selectedLevel → $_selectedClass',
                     style: GoogleFonts.inter(
                       fontSize: 12,
-                      color: const Color(0xFF8B5CF6),
+                      color: _accentBlue,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -832,8 +1072,6 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                 _selectedClass == null)
               _buildEmptyState()
             else ...[
-              _buildLevelInfo(),
-              const SizedBox(height: 16),
               // Removed Flexible inside scrollable to prevent overflow exceptions on small screens
               Container(
                 constraints: const BoxConstraints(
@@ -850,6 +1088,16 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
   }
 
   Widget _buildClassTeacherToggle() {
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color backgroundColor =
+        isDark ? const Color(0xFF0F172A) : _lightSurface;
+    final Color borderColor = isDark
+        ? Colors.white.withValues(alpha: 0.1)
+        : _primaryBlue.withValues(alpha: 0.18);
+    final Color primaryTextColor = isDark ? Colors.white : _primaryBlue;
+    final Color secondaryTextColor = isDark
+        ? Colors.white.withValues(alpha: 0.7)
+        : _primaryBlue.withValues(alpha: 0.7);
     final note =
         _currentClassTeacherOf != null && _currentClassTeacherOf!.isNotEmpty
             ? 'Currently class teacher of: $_currentClassTeacherOf'
@@ -857,10 +1105,9 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
+        border: Border.all(color: borderColor, width: 1),
       ),
       child: Row(
         children: [
@@ -873,21 +1120,22 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                   style: GoogleFonts.inter(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: primaryTextColor,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   note,
                   style: GoogleFonts.inter(
-                      color: Colors.white.withValues(alpha: 0.7), fontSize: 12),
+                      color: secondaryTextColor, fontSize: 12),
                 ),
               ],
             ),
           ),
           Switch(
             value: _makeClassTeacher,
-            activeThumbColor: const Color(0xFF8B5CF6),
+            activeThumbColor: _primaryBlue,
+            activeTrackColor: _primaryBlue.withValues(alpha: 0.35),
             onChanged: (val) async {
               if (!val) {
                 setState(() => _makeClassTeacher = false);
@@ -965,7 +1213,7 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                 fontWeight: FontWeight.w600,
                 color: Theme.of(context).brightness == Brightness.dark
                     ? Colors.white.withValues(alpha: 0.7)
-                    : const Color(0xFF1E3A8A),
+                    : _primaryBlue,
               ),
             ),
             const SizedBox(height: 8),
@@ -975,94 +1223,11 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
                 fontSize: 14,
                 color: Theme.of(context).brightness == Brightness.dark
                     ? Colors.white.withValues(alpha: 0.5)
-                    : const Color(0xFF1E3A8A).withValues(alpha: 0.7),
+                    : _primaryBlue.withValues(alpha: 0.7),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildLevelInfo() {
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).brightness == Brightness.dark
-            ? const Color(0xFF0F172A)
-            : const Color(0xFFE2E8F0),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).brightness == Brightness.dark
-              ? Colors.white.withValues(alpha: 0.1)
-              : const Color(0xFF1E3A8A).withValues(alpha: 0.12),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.school,
-                color: const Color(0xFF8B5CF6),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'Subjects linked to $_selectedClass',
-                style: GoogleFonts.inter(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? Colors.white
-                      : const Color(0xFF1E3A8A),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_coursesLoading)
-            const Center(child: CircularProgressIndicator())
-          else if (_availableCourses.isEmpty)
-            Text(
-              'No subjects are currently linked to this class. Add subjects from the class setup screen.',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.7)
-                    : const Color(0xFF1E3A8A).withValues(alpha: 0.7),
-              ),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _availableCourses.map((course) {
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Text(
-                    course.name,
-                    style: GoogleFonts.inter(
-                      fontSize: 12,
-                      color: const Color(0xFF8B5CF6),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-        ],
       ),
     );
   }
@@ -1090,6 +1255,7 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth;
+        final bool isDark = Theme.of(context).brightness == Brightness.dark;
         // Determine columns based on width with minimum card width ~220px
         int cols = (w / 220).floor().clamp(1, 4);
         final spacing = w < 500 ? 12.0 : 16.0;
@@ -1105,83 +1271,160 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
           itemBuilder: (context, index) {
             final course = _availableCourses[index];
             final isSelected = _selectedCourses.contains(course.id);
+            final meta = _assignmentsBySubject[course.id];
+            final String? teacherName = meta?.teacherName;
+            final bool assignedElsewhere = meta != null &&
+                meta.teacherId != null &&
+                meta.teacherId!.isNotEmpty &&
+                _selectedTeacher != null &&
+                meta.teacherId != _selectedTeacher &&
+                !isSelected;
+            final bool isSelectable = !assignedElsewhere;
+
+            final Color baseBg;
+            final Color borderColor;
+            final Color titleColor;
+            final Color subtitleColor;
+
+            if (isSelected) {
+              baseBg = _accentBlue.withValues(alpha: isDark ? 0.25 : 0.18);
+              borderColor = _accentBlue;
+              titleColor = isDark ? Colors.white : _primaryBlue;
+              subtitleColor = isDark
+                  ? Colors.white.withValues(alpha: 0.75)
+                  : _primaryBlue.withValues(alpha: 0.7);
+            } else if (assignedElsewhere) {
+              baseBg = isDark
+                  ? const Color(0xFF0F172A).withValues(alpha: 0.6)
+                  : _lightSurface.withValues(alpha: 0.65);
+              borderColor = Colors.redAccent.withValues(alpha: 0.7);
+              titleColor = Colors.redAccent;
+              subtitleColor = Colors.redAccent.withValues(alpha: 0.7);
+            } else {
+              baseBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+              borderColor = isDark
+                  ? Colors.white.withValues(alpha: 0.1)
+                  : _primaryBlue.withValues(alpha: 0.18);
+              titleColor = isDark ? Colors.white : _primaryBlue;
+              subtitleColor = isDark
+                  ? Colors.white.withValues(alpha: 0.7)
+                  : _primaryBlue.withValues(alpha: 0.6);
+            }
 
             return GestureDetector(
-              onTap: () {
-                setState(() {
-                  if (isSelected) {
-                    _selectedCourses.remove(course.id);
-                  } else {
-                    _selectedCourses.add(course.id);
-                  }
-                });
-              },
-              child: Container(
-                padding: EdgeInsets.all(w < 500 ? 12 : 16),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? const Color(0xFF8B5CF6).withValues(alpha: 0.2)
-                      : const Color(0xFF0F172A),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isSelected
-                        ? const Color(0xFF8B5CF6)
-                        : Colors.white.withValues(alpha: 0.1),
-                    width: isSelected ? 2 : 1,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            course.name,
-                            style: GoogleFonts.inter(
-                              fontSize: w < 500 ? 14 : 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        if (isSelected)
-                          const Icon(
-                            Icons.check_circle,
-                            color: Color(0xFF8B5CF6),
-                            size: 20,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      course.code,
-                      style: GoogleFonts.inter(
-                        fontSize: w < 500 ? 11 : 12,
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontWeight: FontWeight.w500,
+              onTap: isSelectable
+                  ? () {
+                      setState(() {
+                        if (isSelected) {
+                          _selectedCourses.remove(course.id);
+                        } else {
+                          _selectedCourses.add(course.id);
+                        }
+                      });
+                    }
+                  : null,
+              child: Stack(
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: EdgeInsets.all(w < 500 ? 12 : 16),
+                    decoration: BoxDecoration(
+                      color: baseBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: borderColor,
+                        width: isSelected ? 2 : 1,
                       ),
+                      boxShadow: isDark
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.04),
+                                blurRadius: 12,
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
                     ),
-                    const Spacer(),
-                    Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          Icons.school,
-                          size: 14,
-                          color: Colors.white.withValues(alpha: 0.6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                course.name,
+                                style: GoogleFonts.inter(
+                                  fontSize: w < 500 ? 14 : 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: titleColor,
+                                ),
+                              ),
+                            ),
+                            if (isSelected)
+                              Icon(
+                                Icons.check_circle,
+                                color: _accentBlue,
+                                size: 20,
+                              ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(height: 8),
                         Text(
-                          '',
+                          course.code,
                           style: GoogleFonts.inter(
                             fontSize: w < 500 ? 11 : 12,
-                            color: Colors.white.withValues(alpha: 0.6),
+                            color: subtitleColor,
+                            fontWeight: FontWeight.w500,
                           ),
+                        ),
+                        const Spacer(),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.school,
+                              size: 14,
+                              color: subtitleColor.withValues(alpha: 0.8),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                teacherName ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.inter(
+                                  fontSize: w < 500 ? 11 : 12,
+                                  color: subtitleColor,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
-                ),
+                  ),
+                  if (assignedElsewhere)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Tooltip(
+                        message: teacherName == null || teacherName.isEmpty
+                            ? 'Assigned to another teacher'
+                            : 'Assigned to $teacherName',
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent.withValues(alpha: 0.9),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             );
           },
@@ -1253,6 +1496,8 @@ class _CourseAssignmentScreenState extends State<CourseAssignmentScreen> {
           _fetchedClasses = [];
           _availableCourses = [];
         });
+        _clearTeacherController();
+        _clearClassController();
       } else {
         _showError(res['error'] ?? 'Failed to save assignments');
       }
@@ -1295,5 +1540,17 @@ class Course {
     required this.name,
     required this.code,
     required this.credits,
+  });
+}
+
+class _AssignmentMeta {
+  final String? assignmentId;
+  final String? teacherId;
+  final String? teacherName;
+
+  const _AssignmentMeta({
+    this.assignmentId,
+    this.teacherId,
+    this.teacherName,
   });
 }

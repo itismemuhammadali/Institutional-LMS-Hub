@@ -20,6 +20,69 @@ if (function_exists('ini_set')) {
     @ini_set('display_startup_errors', '0');
 }
 
+function upsertAssessmentCompletion($pdo, $input, $requester) {
+    $kind = isset($input['kind']) ? strtolower(trim((string)$input['kind'])) : '';
+    $classId = isset($input['class_id']) ? intval($input['class_id']) : 0;
+    $subjectId = isset($input['subject_id']) ? intval($input['subject_id']) : 0;
+    $planItemId = isset($input['plan_item_id']) ? intval($input['plan_item_id']) : 0;
+    $number = isset($input['number']) ? intval($input['number']) : null;
+    $status = isset($input['status']) ? trim((string)$input['status']) : 'covered';
+    $completedAtRaw = isset($input['completed_at']) ? trim((string)$input['completed_at']) : null;
+
+    if (!in_array($kind, ['assignment', 'quiz'], true) || $classId <= 0 || $subjectId <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Invalid payload']);
+        return;
+    }
+
+    if (!canManagePlanner($pdo, $requester, $classId, $subjectId)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        return;
+    }
+
+    $completedAt = $completedAtRaw && $completedAtRaw !== '' ? normalizePlannerDateTime($completedAtRaw) : date('Y-m-d H:i:s');
+    $status = in_array($status, ['scheduled','ready_for_verification','covered','deferred'], true) ? $status : 'covered';
+
+    try {
+        ensureAssessmentSchema($pdo);
+        $pdo->beginTransaction();
+
+        if ($kind === 'assignment') {
+            if ($planItemId > 0) {
+                $stmt = $pdo->prepare("UPDATE class_assignments SET status = ?, completed_at = ? WHERE plan_item_id = ? AND class_id = ? AND subject_id = ?");
+                $stmt->execute([$status, $completedAt, $planItemId, $classId, $subjectId]);
+            }
+            if ($number !== null) {
+                $stmt = $pdo->prepare("UPDATE class_assignments SET status = ?, completed_at = ? WHERE assignment_number = ? AND class_id = ? AND subject_id = ?");
+                $stmt->execute([$status, $completedAt, $number, $classId, $subjectId]);
+                $stmt = $pdo->prepare("UPDATE student_assignments SET coverage_status = ?, graded_at = CASE WHEN ? = 'covered' THEN COALESCE(graded_at, ?) ELSE graded_at END WHERE class_id = ? AND subject_id = ? AND assignment_number = ?");
+                $stmt->execute([$status, $status, $completedAt, $classId, $subjectId, $number]);
+            }
+        } else {
+            if ($planItemId > 0) {
+                $stmt = $pdo->prepare("UPDATE class_quizzes SET status = ?, completed_at = ? WHERE plan_item_id = ? AND class_id = ? AND subject_id = ?");
+                $stmt->execute([$status, $completedAt, $planItemId, $classId, $subjectId]);
+            }
+            if ($number !== null) {
+                $stmt = $pdo->prepare("UPDATE class_quizzes SET status = ?, completed_at = ? WHERE quiz_number = ? AND class_id = ? AND subject_id = ?");
+                $stmt->execute([$status, $completedAt, $number, $classId, $subjectId]);
+                $stmt = $pdo->prepare("UPDATE student_quizzes SET coverage_status = ?, graded_at = CASE WHEN ? = 'covered' THEN COALESCE(graded_at, ?) ELSE graded_at END WHERE class_id = ? AND subject_id = ? AND quiz_number = ?");
+                $stmt->execute([$status, $status, $completedAt, $classId, $subjectId, $number]);
+            }
+        }
+
+        $pdo->commit();
+        echo json_encode(['success' => true, 'status' => $status, 'completed_at' => $completedAt]);
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to update assessment completion: ' . $e->getMessage()]);
+    }
+}
+
 function fetchTermMarks($pdo, $table, $studentId, $classId = null) {
     $allowedTables = ['student_first_term_marks', 'student_final_term_marks'];
     if (!in_array($table, $allowedTables, true)) {
@@ -1174,6 +1237,502 @@ function syncLinkedAssessmentCoverage($pdo, $planItemId, $status) {
     $stmt->execute([$status, $planItemId]);
 }
 
+function ensureAssessmentSchema($pdo) {
+    static $schemaEnsured = false;
+    if ($schemaEnsured) {
+        return;
+    }
+    $schemaEnsured = true;
+
+    $ddlStatements = [
+        "ALTER TABLE class_assignments ADD COLUMN plan_item_id INT NULL AFTER subject_id",
+        "ALTER TABLE class_assignments ADD COLUMN status ENUM('scheduled','ready_for_verification','covered','deferred') NOT NULL DEFAULT 'scheduled' AFTER deadline",
+        "ALTER TABLE class_assignments ADD COLUMN completed_at DATETIME NULL AFTER status",
+        "ALTER TABLE class_assignments ADD INDEX idx_ca_plan_item (plan_item_id)",
+        "ALTER TABLE class_quizzes ADD COLUMN plan_item_id INT NULL AFTER subject_id",
+        "ALTER TABLE class_quizzes ADD COLUMN status ENUM('scheduled','ready_for_verification','covered','deferred') NOT NULL DEFAULT 'scheduled' AFTER deadline",
+        "ALTER TABLE class_quizzes ADD COLUMN completed_at DATETIME NULL AFTER status",
+        "ALTER TABLE class_quizzes ADD INDEX idx_cq_plan_item (plan_item_id)",
+    ];
+
+    foreach ($ddlStatements as $sql) {
+        try {
+            $pdo->exec($sql);
+        } catch (Exception $e) {
+            // Ignore schema errors (e.g. insufficient privileges or unsupported IF NOT EXISTS)
+        }
+    }
+}
+
+function upsertClassAssignmentForPlanItem($pdo, $plan, $itemId, $title, $description, $deadline, $status) {
+    ensureAssessmentSchema($pdo);
+
+    $classId = intval($plan['class_id'] ?? 0);
+    $subjectId = intval($plan['subject_id'] ?? 0);
+    if ($classId <= 0 || $subjectId <= 0 || $itemId <= 0) {
+        return [null, null];
+    }
+
+    $stmt = $pdo->prepare("SELECT id, assignment_number FROM class_assignments WHERE plan_item_id = ? LIMIT 1");
+    $stmt->execute([$itemId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $assignmentName = $title ?: ($description ?: 'Assignment');
+    $deadlineValue = $deadline ?: null;
+
+    if ($row) {
+        $update = $pdo->prepare(
+            "UPDATE class_assignments
+             SET assignment_name = ?, description = ?, deadline = ?, status = ?, updated_at = NOW()
+             WHERE id = ?"
+        );
+        $update->execute([
+            $assignmentName,
+            $description ?: null,
+            $deadlineValue,
+            $status,
+            intval($row['id']),
+        ]);
+        return [intval($row['assignment_number']), intval($row['id'])];
+    }
+
+    $stmt = $pdo->prepare("SELECT COALESCE(MAX(assignment_number), 0) FROM class_assignments WHERE class_id = ? AND subject_id = ?");
+    $stmt->execute([$classId, $subjectId]);
+    $nextNumber = intval($stmt->fetchColumn()) + 1;
+
+    $insert = $pdo->prepare(
+        "INSERT INTO class_assignments
+            (class_id, subject_id, plan_item_id, assignment_number, assignment_name, description, deadline, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())"
+    );
+    $insert->execute([
+        $classId,
+        $subjectId,
+        $itemId,
+        $nextNumber,
+        $assignmentName,
+        $description ?: null,
+        $deadlineValue,
+        $status,
+    ]);
+
+    return [$nextNumber, intval($pdo->lastInsertId())];
+}
+
+function upsertClassQuizForPlanItem($pdo, $plan, $itemId, $title, $topic, $scheduledAt, $status) {
+    ensureAssessmentSchema($pdo);
+
+    $classId = intval($plan['class_id'] ?? 0);
+    $subjectId = intval($plan['subject_id'] ?? 0);
+    if ($classId <= 0 || $subjectId <= 0 || $itemId <= 0) {
+        return [null, null];
+    }
+
+    $stmt = $pdo->prepare("SELECT id, quiz_number FROM class_quizzes WHERE plan_item_id = ? LIMIT 1");
+    $stmt->execute([$itemId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $quizName = $title ?: ($topic ?: 'Quiz');
+    $deadlineValue = $scheduledAt ?: null;
+
+    if ($row) {
+        $update = $pdo->prepare(
+            "UPDATE class_quizzes
+             SET quiz_name = ?, description = ?, deadline = ?, status = ?, updated_at = NOW()
+             WHERE id = ?"
+        );
+        $update->execute([
+            $quizName,
+            $topic ?: null,
+            $deadlineValue,
+            $status,
+            intval($row['id']),
+        ]);
+        return [intval($row['quiz_number']), intval($row['id'])];
+    }
+
+    $stmt = $pdo->prepare("SELECT COALESCE(MAX(quiz_number), 0) FROM class_quizzes WHERE class_id = ? AND subject_id = ?");
+    $stmt->execute([$classId, $subjectId]);
+    $nextNumber = intval($stmt->fetchColumn()) + 1;
+
+    $insert = $pdo->prepare(
+        "INSERT INTO class_quizzes
+            (class_id, subject_id, plan_item_id, quiz_number, quiz_name, description, deadline, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())"
+    );
+    $insert->execute([
+        $classId,
+        $subjectId,
+        $itemId,
+        $nextNumber,
+        $quizName,
+        $topic ?: null,
+        $deadlineValue,
+        $status,
+    ]);
+
+    return [$nextNumber, intval($pdo->lastInsertId())];
+}
+
+function fetchAssessmentMarksSummary($pdo, $kind, $classId, $subjectId) {
+    if ($kind === 'assignment') {
+        $stmt = $pdo->prepare(
+            "SELECT assignment_number AS number,
+                    MAX(total_marks) AS total_marks,
+                    COUNT(*) AS student_count,
+                    SUM(CASE WHEN obtained_marks IS NOT NULL THEN 1 ELSE 0 END) AS graded_count,
+                    MAX(updated_at) AS updated_at
+             FROM student_assignments
+             WHERE class_id = ? AND subject_id = ? AND assignment_number IS NOT NULL
+             GROUP BY assignment_number"
+        );
+    } else {
+        $stmt = $pdo->prepare(
+            "SELECT quiz_number AS number,
+                    MAX(total_marks) AS total_marks,
+                    COUNT(*) AS student_count,
+                    SUM(CASE WHEN obtained_marks IS NOT NULL THEN 1 ELSE 0 END) AS graded_count,
+                    MAX(updated_at) AS updated_at
+             FROM student_quizzes
+             WHERE class_id = ? AND subject_id = ? AND quiz_number IS NOT NULL
+             GROUP BY quiz_number"
+        );
+    }
+
+    $stmt->execute([$classId, $subjectId]);
+    $map = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $number = intval($row['number']);
+        $map[$number] = [
+            'total_marks' => $row['total_marks'] !== null ? floatval($row['total_marks']) : null,
+            'student_count' => intval($row['student_count'] ?? 0),
+            'graded_count' => intval($row['graded_count'] ?? 0),
+            'updated_at' => $row['updated_at'] ?? null,
+        ];
+    }
+
+    return $map;
+}
+
+function fetchClassAssessments($pdo, $kind, $classId, $subjectId) {
+    ensureAssessmentSchema($pdo);
+
+    $marksSummary = fetchAssessmentMarksSummary($pdo, $kind, $classId, $subjectId);
+
+    if ($kind === 'assignment') {
+        $sql = "SELECT a.id,
+                       a.assignment_number AS number,
+                       a.assignment_name AS name,
+                       a.description,
+                       a.deadline,
+                       a.status,
+                       a.plan_item_id,
+                       a.completed_at,
+                       pi.title AS plan_title,
+                       pi.description AS plan_description,
+                       pi.topic AS plan_topic,
+                       pi.status AS plan_status,
+                       pi.scheduled_for,
+                       pi.status_changed_at,
+                       pi.updated_at AS plan_updated_at
+                FROM class_assignments a
+                LEFT JOIN class_subject_plan_items pi ON pi.id = a.plan_item_id
+                WHERE a.class_id = ? AND a.subject_id = ?
+                ORDER BY a.deadline IS NULL, a.deadline ASC, a.assignment_number ASC";
+    } else {
+        $sql = "SELECT q.id,
+                       q.quiz_number AS number,
+                       q.quiz_name AS name,
+                       q.description,
+                       q.deadline,
+                       q.status,
+                       q.plan_item_id,
+                       q.completed_at,
+                       pi.title AS plan_title,
+                       pi.description AS plan_description,
+                       pi.topic AS plan_topic,
+                       pi.status AS plan_status,
+                       pi.scheduled_for,
+                       pi.status_changed_at,
+                       pi.updated_at AS plan_updated_at
+                FROM class_quizzes q
+                LEFT JOIN class_subject_plan_items pi ON pi.id = q.plan_item_id
+                WHERE q.class_id = ? AND q.subject_id = ?
+                ORDER BY q.deadline IS NULL, q.deadline ASC, q.quiz_number ASC";
+    }
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$classId, $subjectId]);
+
+    $now = new DateTimeImmutable('now');
+    $rows = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $number = isset($row['number']) ? intval($row['number']) : null;
+        $deadlineRaw = $row['deadline'] ?? null;
+        $fallback = $row['scheduled_for'] ?? null;
+        $deadline = $deadlineRaw ?: $fallback;
+        $status = $row['plan_status'] ?: ($row['status'] ?? 'scheduled');
+        $isOverdue = false;
+
+        if ($deadline && $status !== 'covered') {
+            $deadlineDt = DateTime::createFromFormat('Y-m-d H:i:s', $deadline) ?: DateTime::createFromFormat('Y-m-d', $deadline);
+            if ($deadlineDt instanceof DateTimeInterface) {
+                if ($deadlineDt < $now) {
+                    $isOverdue = true;
+                }
+            }
+        }
+
+        $summary = ($number !== null && isset($marksSummary[$number])) ? $marksSummary[$number] : null;
+
+        $rows[] = [
+            'id' => intval($row['id']),
+            'kind' => $kind,
+            'plan_item_id' => $row['plan_item_id'] ? intval($row['plan_item_id']) : null,
+            'number' => $number,
+            'title' => $row['plan_title'] ?: ($row['name'] ?? null),
+            'description' => $row['plan_description'] ?: ($row['description'] ?? null),
+            'topic' => $row['plan_topic'] ?? null,
+            'deadline' => $deadline,
+            'status' => $status,
+            'is_overdue' => $isOverdue,
+            'total_marks' => $summary['total_marks'] ?? null,
+            'student_count' => $summary['student_count'] ?? null,
+            'graded_count' => $summary['graded_count'] ?? null,
+            'updated_at' => $summary['updated_at'] ?? ($row['plan_updated_at'] ?? null),
+            'completed_at' => $row['completed_at'] ?? null,
+        ];
+    }
+
+    return $rows;
+}
+
+function listClassAssessments($pdo, $requester) {
+    $classId = isset($_GET['class_id']) ? intval($_GET['class_id']) : 0;
+    $subjectId = isset($_GET['subject_id']) ? intval($_GET['subject_id']) : 0;
+
+    if ($classId <= 0 || $subjectId <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'class_id and subject_id are required']);
+        return;
+    }
+
+    $role = strtolower($requester['role'] ?? '');
+    $canManage = canManagePlanner($pdo, $requester, $classId, $subjectId);
+    $canViewOnly = !$canManage && in_array($role, ['student', 'parent', 'guardian'], true);
+
+    if (!$canManage && !$canViewOnly) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        return;
+    }
+
+    try {
+        $assignments = fetchClassAssessments($pdo, 'assignment', $classId, $subjectId);
+        $quizzes = fetchClassAssessments($pdo, 'quiz', $classId, $subjectId);
+
+        echo json_encode([
+            'success' => true,
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'assignments' => $assignments,
+            'quizzes' => $quizzes,
+        ]);
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to fetch assessments: ' . $e->getMessage()]);
+    }
+}
+
+function saveClassAssessment($pdo, $input, $requester, $kind) {
+    ensureAssessmentSchema($pdo);
+
+    $classId = isset($input['class_id']) ? intval($input['class_id']) : 0;
+    $subjectId = isset($input['subject_id']) ? intval($input['subject_id']) : 0;
+    if ($classId <= 0 || $subjectId <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'class_id and subject_id are required']);
+        return;
+    }
+
+    if (!canManagePlanner($pdo, $requester, $classId, $subjectId)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden']);
+        return;
+    }
+
+    $allowedStatuses = ['scheduled', 'ready_for_verification', 'covered', 'deferred'];
+    $status = isset($input['status']) ? trim((string)$input['status']) : 'scheduled';
+    if (!in_array($status, $allowedStatuses, true)) {
+        $status = 'scheduled';
+    }
+
+    $deadlineRaw = $input['deadline'] ?? ($input['scheduled_at'] ?? null);
+    $deadline = normalizePlannerDateTime($deadlineRaw);
+
+    $title = isset($input['title']) ? trim((string)$input['title']) : '';
+    if ($title === '') {
+        $title = null;
+    }
+
+    $description = isset($input['description']) ? trim((string)$input['description']) : '';
+    if ($description === '') {
+        $description = null;
+    }
+
+    $topic = null;
+    if ($kind === 'quiz') {
+        $topic = isset($input['topic']) ? trim((string)$input['topic']) : '';
+        if ($topic === '') {
+            $topic = null;
+        }
+    }
+
+    $planItemId = isset($input['plan_item_id']) ? intval($input['plan_item_id']) : null;
+    if ($planItemId !== null && $planItemId <= 0) {
+        $planItemId = null;
+    }
+
+    $teacherAssignmentId = isset($input['teacher_assignment_id']) ? intval($input['teacher_assignment_id']) : null;
+    if ($teacherAssignmentId !== null && $teacherAssignmentId <= 0) {
+        $teacherAssignmentId = null;
+    }
+
+    $teacherUserId = null;
+    if ($teacherAssignmentId !== null) {
+        $teacherUserId = resolveAssignmentTeacherUserId($pdo, $teacherAssignmentId);
+        if ($teacherUserId === null) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid teacher_assignment_id']);
+            return;
+        }
+    }
+
+    $createdBy = isset($requester['id']) ? intval($requester['id']) : null;
+    if ($createdBy !== null && $createdBy <= 0) {
+        $createdBy = null;
+    }
+
+    $id = isset($input['id']) ? intval($input['id']) : 0;
+    $number = isset($input['number']) ? intval($input['number']) : 0;
+    if ($number < 0) {
+        $number = 0;
+    }
+
+    $table = $kind === 'assignment' ? 'class_assignments' : 'class_quizzes';
+    $nameColumn = $kind === 'assignment' ? 'assignment_name' : 'quiz_name';
+    $numberColumn = $kind === 'assignment' ? 'assignment_number' : 'quiz_number';
+
+    $nameValue = $title;
+    if ($nameValue === null) {
+        $nameValue = $kind === 'assignment'
+            ? ($description ?? 'Assignment')
+            : ($topic ?? $description ?? 'Quiz');
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        $existingRow = null;
+        if ($id > 0) {
+            $stmt = $pdo->prepare("SELECT id, {$numberColumn} AS number FROM {$table} WHERE id = ? AND class_id = ? AND subject_id = ? LIMIT 1");
+            $stmt->execute([$id, $classId, $subjectId]);
+            $existingRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$existingRow) {
+                $pdo->rollBack();
+                http_response_code(404);
+                echo json_encode(['error' => ucfirst($kind) . ' not found']);
+                return;
+            }
+            $number = intval($existingRow['number']);
+        } elseif ($number > 0) {
+            $stmt = $pdo->prepare("SELECT id, {$numberColumn} AS number FROM {$table} WHERE class_id = ? AND subject_id = ? AND {$numberColumn} = ? LIMIT 1");
+            $stmt->execute([$classId, $subjectId, $number]);
+            $existingRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($existingRow) {
+                $id = intval($existingRow['id']);
+                $number = intval($existingRow['number']);
+            }
+        }
+
+        if ($id > 0 || $existingRow) {
+            $targetId = $id > 0 ? $id : intval($existingRow['id']);
+            $sql = "UPDATE {$table}
+                    SET {$nameColumn} = :name,
+                        description = :description,
+                        deadline = :deadline,
+                        status = :status,
+                        updated_at = NOW()
+                        " . ($planItemId !== null ? ', plan_item_id = :plan_item_id' : '') .
+                        ($teacherUserId !== null ? ', teacher_user_id = :teacher_user_id' : '') .
+                    " WHERE id = :id";
+
+            $stmt = $pdo->prepare($sql);
+            $params = [
+                ':name' => $nameValue,
+                ':description' => $kind === 'quiz' ? ($topic ?? $description) : $description,
+                ':deadline' => $deadline,
+                ':status' => $status,
+                ':id' => $targetId,
+            ];
+            if ($planItemId !== null) {
+                $params[':plan_item_id'] = $planItemId;
+            }
+            if ($teacherUserId !== null) {
+                $params[':teacher_user_id'] = $teacherUserId;
+            }
+
+            $stmt->execute($params);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'id' => $targetId, 'number' => $number, 'updated' => true]);
+            return;
+        }
+
+        if ($number <= 0) {
+            $stmt = $pdo->prepare("SELECT COALESCE(MAX({$numberColumn}), 0) FROM {$table} WHERE class_id = ? AND subject_id = ?");
+            $stmt->execute([$classId, $subjectId]);
+            $number = intval($stmt->fetchColumn()) + 1;
+        } else {
+            $stmt = $pdo->prepare("SELECT 1 FROM {$table} WHERE class_id = ? AND subject_id = ? AND {$numberColumn} = ? LIMIT 1");
+            $stmt->execute([$classId, $subjectId, $number]);
+            if ($stmt->fetch()) {
+                $pdo->rollBack();
+                http_response_code(409);
+                echo json_encode(['error' => ucfirst($kind) . ' number already exists']);
+                return;
+            }
+        }
+
+        $insertSql = "INSERT INTO {$table}
+            (class_id, subject_id, {$numberColumn}, {$nameColumn}, description, deadline, status, plan_item_id, teacher_user_id, created_by_user_id, created_at, updated_at)
+            VALUES (:class_id, :subject_id, :number, :name, :description, :deadline, :status, :plan_item_id, :teacher_user_id, :created_by, NOW(), NOW())";
+
+        $stmt = $pdo->prepare($insertSql);
+        $stmt->execute([
+            ':class_id' => $classId,
+            ':subject_id' => $subjectId,
+            ':number' => $number,
+            ':name' => $nameValue,
+            ':description' => $kind === 'quiz' ? ($topic ?? $description) : $description,
+            ':deadline' => $deadline,
+            ':status' => $status,
+            ':plan_item_id' => $planItemId,
+            ':teacher_user_id' => $teacherUserId,
+            ':created_by' => $createdBy,
+        ]);
+
+        $newId = intval($pdo->lastInsertId());
+        $pdo->commit();
+        echo json_encode(['success' => true, 'id' => $newId, 'number' => $number, 'created' => true]);
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to save ' . $kind . ': ' . $e->getMessage()]);
+    }
+}
+
 /**
  * Resolve class name by class_id.
  */
@@ -1235,7 +1794,7 @@ function syncPlannerItemToStudentTables($pdo, $plan, $itemId, $itemType, $title,
         $sql = "INSERT INTO student_assignments (class_id, subject_id, student_user_id, assignment_number, title, description, deadline, plan_item_id, coverage_status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
         $ins = $pdo->prepare($sql);
-        $deadlineDate = $scheduledFor ?: ($plan['assignment_deadline'] ?? null);
+        $deadlineDate = $scheduledFor; 
         foreach ($studentIds as $sid) {
             $ins->execute([
                 $classId,
@@ -1258,7 +1817,7 @@ function syncPlannerItemToStudentTables($pdo, $plan, $itemId, $itemType, $title,
         $sql = "INSERT INTO student_quizzes (class_id, subject_id, student_user_id, quiz_number, title, topic, scheduled_at, plan_item_id, coverage_status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())";
         $ins = $pdo->prepare($sql);
-        $scheduledAt = $scheduledFor ?: ($plan['quiz_deadline'] ?? null);
+        $scheduledAt = $scheduledFor; 
         foreach ($studentIds as $sid) {
             $ins->execute([
                 $classId,
@@ -1278,6 +1837,7 @@ function syncPlannerItemToStudentTables($pdo, $plan, $itemId, $itemType, $title,
 function getPlannerData($pdo, $requester) {
     $classId = isset($_GET['class_id']) ? intval($_GET['class_id']) : 0;
     $subjectId = isset($_GET['subject_id']) ? intval($_GET['subject_id']) : 0;
+    // ... rest of the code remains the same ...
     $teacherAssignmentId = isset($_GET['teacher_assignment_id']) ? intval($_GET['teacher_assignment_id']) : null;
 
     plannerLog('getPlannerData.request', [
@@ -1295,18 +1855,34 @@ function getPlannerData($pdo, $requester) {
         return;
     }
 
-    if (!canManagePlanner($pdo, $requester, $classId, $subjectId)) {
+    $role = strtolower($requester['role'] ?? '');
+    $canManage = canManagePlanner($pdo, $requester, $classId, $subjectId);
+    $canViewOnly = !$canManage && in_array($role, ['student', 'parent', 'guardian'], true);
+
+    if (!$canManage && !$canViewOnly) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden']);
-        plannerLog('getPlannerData.forbidden', ['class_id' => $classId, 'subject_id' => $subjectId, 'requester_id' => $requester['id'] ?? null]);
+        plannerLog('getPlannerData.forbidden', [
+            'class_id' => $classId,
+            'subject_id' => $subjectId,
+            'requester_id' => $requester['id'] ?? null,
+            'role' => $role,
+        ]);
         return;
     }
 
     $plan = fetchPlannerPlanByContext($pdo, $classId, $subjectId, $teacherAssignmentId);
     if ($plan) {
-        autoAdvancePlannerStatuses($pdo, (int)$plan['id']);
+        if ($canManage) {
+            autoAdvancePlannerStatuses($pdo, (int)$plan['id']);
+        }
         $items = loadPlannerItems($pdo, (int)$plan['id']);
-        plannerLog('getPlannerData.success', ['plan_id' => $plan['id'], 'items_count' => count($items)]);
+        plannerLog('getPlannerData.success', [
+            'plan_id' => $plan['id'],
+            'items_count' => count($items),
+            'viewer_role' => $role,
+            'can_manage' => $canManage,
+        ]);
         echo json_encode([
             'success' => true,
             'plan' => $plan,
@@ -1361,8 +1937,6 @@ function savePlannerPlan($pdo, $input, $requester) {
     $singleDate = normalizePlannerDate($input['single_date'] ?? null);
     $rangeStart = normalizePlannerDate($input['range_start'] ?? null);
     $rangeEnd = normalizePlannerDate($input['range_end'] ?? null);
-    $assignmentDeadline = normalizePlannerDate($input['assignment_deadline'] ?? null);
-    $quizDeadline = normalizePlannerDate($input['quiz_deadline'] ?? null);
     $status = isset($input['status']) ? trim((string)$input['status']) : 'active';
     if (!in_array($status, ['active', 'archived'], true)) {
         $status = 'active';
@@ -1414,8 +1988,6 @@ function savePlannerPlan($pdo, $input, $requester) {
                         single_date = :single_date,
                         range_start = :range_start,
                         range_end = :range_end,
-                        assignment_deadline = :assignment_deadline,
-                        quiz_deadline = :quiz_deadline,
                         status = :status,
                         teacher_user_id = :teacher_user_id,
                         teacher_assignment_id = :assignment_id,
@@ -1428,8 +2000,6 @@ function savePlannerPlan($pdo, $input, $requester) {
                 ':single_date' => $singleDate,
                 ':range_start' => $rangeStart,
                 ':range_end' => $rangeEnd,
-                ':assignment_deadline' => $assignmentDeadline,
-                ':quiz_deadline' => $quizDeadline,
                 ':status' => $status,
                 ':teacher_user_id' => $teacherUserId,
                 ':assignment_id' => $teacherAssignmentId,
@@ -1449,10 +2019,10 @@ function savePlannerPlan($pdo, $input, $requester) {
 
         $sql = "INSERT INTO class_subject_plans
                 (class_id, subject_id, teacher_user_id, teacher_assignment_id, academic_term_label,
-                 frequency, single_date, range_start, range_end, assignment_deadline, quiz_deadline,
+                 frequency, single_date, range_start, range_end,
                  status, created_at, updated_at)
                 VALUES (:class_id, :subject_id, :teacher_user_id, :assignment_id, :term,
-                        :frequency, :single_date, :range_start, :range_end, :assignment_deadline, :quiz_deadline,
+                        :frequency, :single_date, :range_start, :range_end,
                         :status, NOW(), NOW())";
         $stmt = $pdo->prepare($sql);
         $stmt->execute([
@@ -1465,8 +2035,6 @@ function savePlannerPlan($pdo, $input, $requester) {
             ':single_date' => $singleDate,
             ':range_start' => $rangeStart,
             ':range_end' => $rangeEnd,
-            ':assignment_deadline' => $assignmentDeadline,
-            ':quiz_deadline' => $quizDeadline,
             ':status' => $status,
         ]);
 
@@ -1607,6 +2175,9 @@ function savePlannerItem($pdo, $input, $requester) {
     $sessions = isset($input['sessions']) && is_array($input['sessions']) ? $input['sessions'] : [];
 
     try {
+        $assignmentNumber = null;
+        $quizNumber = null;
+
         if ($existingItem) {
             plannerLog('savePlannerItem.update_start', ['item_id' => $itemId, 'plan_id' => $planId]);
             $sql = "UPDATE class_subject_plan_items
@@ -1636,9 +2207,14 @@ function savePlannerItem($pdo, $input, $requester) {
                 ':id' => $itemId,
             ]);
             upsertPlannerSessions($pdo, $itemId, $sessions);
+            if ($itemType === 'assignment') {
+                [$assignmentNumber] = upsertClassAssignmentForPlanItem($pdo, $plan, $itemId, $title, $description, $scheduledFor, $status);
+            } elseif ($itemType === 'quiz') {
+                [$quizNumber] = upsertClassQuizForPlanItem($pdo, $plan, $itemId, $title, $topic, $scheduledFor, $status);
+            }
             syncLinkedAssessmentCoverage($pdo, $itemId, $status);
             // Mirror to student_* tables for faster downstream usage
-            syncPlannerItemToStudentTables($pdo, $plan, $itemId, $itemType, $title, $topic, $description, $scheduledFor, $status);
+            syncPlannerItemToStudentTables($pdo, $plan, $itemId, $itemType, $title, $topic, $description, $scheduledFor, $status, $assignmentNumber, $quizNumber);
             plannerLog('savePlannerItem.update_success', ['item_id' => $itemId]);
             echo json_encode(['success' => true, 'item_id' => $itemId, 'updated' => true]);
             return;
@@ -1668,9 +2244,14 @@ function savePlannerItem($pdo, $input, $requester) {
         ]);
         $newId = intval($pdo->lastInsertId());
         upsertPlannerSessions($pdo, $newId, $sessions);
+        if ($itemType === 'assignment') {
+            [$assignmentNumber] = upsertClassAssignmentForPlanItem($pdo, $plan, $newId, $title, $description, $scheduledFor, $status);
+        } elseif ($itemType === 'quiz') {
+            [$quizNumber] = upsertClassQuizForPlanItem($pdo, $plan, $newId, $title, $topic, $scheduledFor, $status);
+        }
         syncLinkedAssessmentCoverage($pdo, $newId, $status);
         // Mirror to student_* tables for faster downstream usage
-        syncPlannerItemToStudentTables($pdo, $plan, $newId, $itemType, $title, $topic, $description, $scheduledFor, $status);
+        syncPlannerItemToStudentTables($pdo, $plan, $newId, $itemType, $title, $topic, $description, $scheduledFor, $status, $assignmentNumber, $quizNumber);
         plannerLog('savePlannerItem.insert_success', ['item_id' => $newId, 'plan_id' => $planId]);
         echo json_encode(['success' => true, 'item_id' => $newId, 'created' => true]);
     } catch (PDOException $e) {
@@ -3322,6 +3903,11 @@ function handleGetRequest($endpoint, $pdo) {
             echo json_encode(['error' => 'Failed to fetch assignment history: ' . $e->getMessage()]);
           }
           break;
+        case 'class_assessments':
+          global $JWT_SECRET;
+          $requester = requireAuth($pdo, $JWT_SECRET);
+          listClassAssessments($pdo, $requester);
+          break;
         case 'assignments':
           // Optional filters: level, class_name
           $level = isset($_GET['level']) ? normalize_level($_GET['level']) : null;
@@ -3826,6 +4412,16 @@ function handlePostRequest($endpoint, $pdo) {
         $requester = requireAuth($pdo, $JWT_SECRET);
         savePlannerItem($pdo, $input, $requester);
         break;
+      case 'class_assignment_save':
+        global $JWT_SECRET;
+        $requester = requireAuth($pdo, $JWT_SECRET);
+        saveClassAssessment($pdo, $input, $requester, 'assignment');
+        break;
+      case 'class_quiz_save':
+        global $JWT_SECRET;
+        $requester = requireAuth($pdo, $JWT_SECRET);
+        saveClassAssessment($pdo, $input, $requester, 'quiz');
+        break;
       case 'planner_item_status':
         global $JWT_SECRET;
         $requester = requireAuth($pdo, $JWT_SECRET);
@@ -4118,6 +4714,11 @@ function handlePutRequest($endpoint, $pdo) {
         case 'profile':
             $userId = isset($_GET['user_id']) ? $_GET['user_id'] : null;
             updateUserProfile($pdo, $userId, $input);
+            break;
+        case 'assessment_completion':
+            global $JWT_SECRET;
+            $requester = requireAuth($pdo, $JWT_SECRET);
+            upsertAssessmentCompletion($pdo, $input ?: [], $requester);
             break;
         default:
             http_response_code(404);

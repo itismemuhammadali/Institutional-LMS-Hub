@@ -126,13 +126,13 @@ class EventDetailsPopup extends StatelessWidget {
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: isLight
-                                    ? Colors.white.withOpacity(0.9)
-                                    : Colors.white.withOpacity(0.14),
+                                    ? Colors.white.withValues(alpha: 0.9)
+                                    : Colors.white.withValues(alpha: 0.14),
                                 borderRadius: BorderRadius.circular(10),
                                 boxShadow: isLight
                                     ? [
                                         BoxShadow(
-                                          color: Colors.black.withOpacity(0.05),
+                                          color: Colors.black.withValues(alpha: 0.05),
                                           blurRadius: 6,
                                           offset: const Offset(0, 3),
                                         ),
@@ -198,17 +198,17 @@ class EventDetailsPopup extends StatelessWidget {
                           final eventColor = _getEventTypeColor(event);
                           final eventIcon = _getEventTypeIcon(event);
                           final Color cardBackground = isLight
-                              ? eventColor.withOpacity(0.08)
-                              : eventColor.withOpacity(0.18);
+                              ? eventColor.withValues(alpha: 0.08)
+                              : eventColor.withValues(alpha: 0.18);
                           final Color cardBorder = isLight
-                              ? eventColor.withOpacity(0.2)
-                              : eventColor.withOpacity(0.35);
+                              ? eventColor.withValues(alpha: 0.2)
+                              : eventColor.withValues(alpha: 0.35);
                           final Color iconBackground = isLight
-                              ? eventColor.withOpacity(0.18)
-                              : eventColor.withOpacity(0.28);
+                              ? eventColor.withValues(alpha: 0.18)
+                              : eventColor.withValues(alpha: 0.28);
                           final Color chipBackground = isLight
-                              ? eventColor.withOpacity(0.18)
-                              : eventColor.withOpacity(0.32);
+                              ? eventColor.withValues(alpha: 0.18)
+                              : eventColor.withValues(alpha: 0.32);
                            
                           return Container(
                             padding: const EdgeInsets.all(16),

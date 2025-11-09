@@ -532,11 +532,7 @@ class _AcademicDashboardScreenState extends State<AcademicDashboardScreen>
                     adminAssignments: _adminAssignments,
                     onComponentTap: _isAdminView ? _handleAdminComponentTap : null,
                   ),
-                  SchemeTabView(
-                    scheme: _scheme,
-                    isAdminView: _isAdminView && !_isSuperAdmin,
-                    adminAssignments: _adminAssignments,
-                  ),
+                  const SizedBox.shrink(),
                   HistoryTabView(
                     history: _history,
                     showAdminAnalytics: _isAdminView || _isSuperAdmin,
@@ -2843,24 +2839,6 @@ class _SchemeTabViewState extends State<SchemeTabView> {
     int? planId = plan.planId;
 
     try {
-      // Choose deadlines: explicit ones if set, otherwise fall back to the first available scheduled date
-      final DateTime? fallbackDate = () {
-        if (plan.scheduledDates.isNotEmpty) {
-          return plan.scheduledDates.first;
-        }
-        if (plan.singleDate != null) {
-          return plan.singleDate;
-        }
-        if (plan.range != null) {
-          return plan.range!.start;
-        }
-        return null;
-      }();
-      final DateTime? effAssignmentDeadline =
-          plan.deadlineFor('assignment') ?? (plan.plannedAssignmentsController.text.trim().isNotEmpty ? fallbackDate : fallbackDate);
-      final DateTime? effQuizDeadline =
-          plan.deadlineFor('quiz') ?? (plan.plannedQuizzesController.text.trim().isNotEmpty ? fallbackDate : fallbackDate);
-
       final response = await ApiService.savePlannerPlan(
         planId: planId,
         classId: classId,
@@ -2869,8 +2847,6 @@ class _SchemeTabViewState extends State<SchemeTabView> {
         singleDate: plan.singleDate != null ? _formatIsoDate(plan.singleDate!) : null,
         rangeStart: plan.range?.start != null ? _formatIsoDate(plan.range!.start) : null,
         rangeEnd: plan.range?.end != null ? _formatIsoDate(plan.range!.end) : null,
-        assignmentDeadline: effAssignmentDeadline != null ? _formatIsoDate(effAssignmentDeadline) : null,
-        quizDeadline: effQuizDeadline != null ? _formatIsoDate(effQuizDeadline) : null,
       );
 
       if (response['success'] != true) {

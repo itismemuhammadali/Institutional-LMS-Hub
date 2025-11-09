@@ -88,7 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             surfaceTintColor: Colors.transparent,
             elevation: isDark ? 2 : 6,
             shadowColor:
-                isDark ? Colors.black.withOpacity(0.4) : primaryBlue.withValues(alpha: 0.12),
+                isDark ? Colors.black.withValues(alpha: 0.4) : primaryBlue.withValues(alpha: 0.12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
               side: BorderSide(
@@ -219,7 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             surfaceTintColor: Colors.transparent,
             elevation: isDark ? 1 : 4,
             shadowColor:
-                isDark ? Colors.black.withOpacity(0.35) : primaryBlue.withValues(alpha: 0.08),
+                isDark ? Colors.black.withValues(alpha: 0.35) : primaryBlue.withValues(alpha: 0.08),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(18),
               side: BorderSide(
@@ -255,7 +255,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               surfaceTintColor: Colors.transparent,
               elevation: isDark ? 1 : 4,
               shadowColor:
-                  isDark ? Colors.black.withOpacity(0.35) : primaryBlue.withValues(alpha: 0.08),
+                  isDark ? Colors.black.withValues(alpha: 0.35) : primaryBlue.withValues(alpha: 0.08),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(18),
                 side: BorderSide(

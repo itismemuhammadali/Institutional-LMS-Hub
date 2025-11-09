@@ -21,7 +21,7 @@ class FloatingChatWidget extends StatefulWidget {
   const FloatingChatWidget({super.key});
 
   @override
-  _FloatingChatWidgetState createState() => _FloatingChatWidgetState();
+  State<FloatingChatWidget> createState() => _FloatingChatWidgetState();
 }
 
 class _FloatingChatWidgetState extends State<FloatingChatWidget> {
@@ -58,7 +58,7 @@ class _FloatingChatWidgetState extends State<FloatingChatWidget> {
             child: GestureDetector(
               onTap: () => setState(() => _isChatOpen = false),
               child: Container(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withValues(alpha: 0.3),
                 child: Center(
                   child: GestureDetector(
                     onTap: () {}, // Prevent closing when tapping on chat
@@ -87,7 +87,7 @@ class _FloatingChatWidgetState extends State<FloatingChatWidget> {
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha: 0.2),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -110,7 +110,7 @@ class SidebarChatWidget extends StatefulWidget {
   const SidebarChatWidget({super.key, required this.onClose, this.showHeader = true});
 
   @override
-  _SidebarChatWidgetState createState() => _SidebarChatWidgetState();
+  State<SidebarChatWidget> createState() => _SidebarChatWidgetState();
 }
 
 class _SidebarChatWidgetState extends State<SidebarChatWidget> {
@@ -174,8 +174,8 @@ class _SidebarChatWidgetState extends State<SidebarChatWidget> {
         boxShadow: [
           BoxShadow(
             color: isDark
-                ? const Color(0xFF60A5FA).withOpacity(0.2)
-                : Colors.black.withOpacity(0.1),
+                ? const Color(0xFF60A5FA).withValues(alpha: 0.2)
+                : Colors.black.withValues(alpha: 0.1),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -307,7 +307,7 @@ class _SidebarChatWidgetState extends State<SidebarChatWidget> {
               border: Border(
                 top: BorderSide(
                   color: isDark
-                      ? const Color(0xFF60A5FA).withOpacity(0.3)
+                      ? const Color(0xFF60A5FA).withValues(alpha: 0.3)
                       : const Color(0xFFE5E7EB),
                 ),
               ),
@@ -337,7 +337,7 @@ class _SidebarChatWidgetState extends State<SidebarChatWidget> {
                         borderRadius: BorderRadius.circular(20),
                         boxShadow: [
                           BoxShadow(
-                            color: (isDark ? const Color(0xFF60A5FA) : const Color(0xFF1E40AF)).withOpacity(0.3),
+                            color: (isDark ? const Color(0xFF60A5FA) : const Color(0xFF1E40AF)).withValues(alpha: 0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                             spreadRadius: 1,
@@ -443,8 +443,8 @@ class _SidebarChatWidgetState extends State<SidebarChatWidget> {
       child: Container(
         decoration: BoxDecoration(
           color: isDark 
-              ? const Color(0xFF1F2937).withOpacity(0.8)
-              : const Color(0xFFF9FAFB).withOpacity(0.8),
+              ? const Color(0xFF1F2937).withValues(alpha: 0.8)
+              : const Color(0xFFF9FAFB).withValues(alpha: 0.8),
           borderRadius: BorderRadius.circular(25),
           border: Border.all(
             color: isDark 
@@ -517,13 +517,13 @@ class _SidebarChatWidgetState extends State<SidebarChatWidget> {
                             : null,
                         color: !isSelected
                             ? (isDark 
-                                ? const Color(0xFF374151).withOpacity(0.3)
-                                : const Color(0xFFE5E7EB).withOpacity(0.5))
+                                ? const Color(0xFF374151).withValues(alpha: 0.3)
+                                : const Color(0xFFE5E7EB).withValues(alpha: 0.5))
                             : null,
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: isSelected ? [
                           BoxShadow(
-                            color: (isDark ? const Color(0xFF60A5FA) : const Color(0xFF1E40AF)).withOpacity(0.3),
+                            color: (isDark ? const Color(0xFF60A5FA) : const Color(0xFF1E40AF)).withValues(alpha: 0.3),
                             blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),

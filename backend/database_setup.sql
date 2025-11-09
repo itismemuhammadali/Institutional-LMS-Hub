@@ -463,9 +463,6 @@ CREATE TABLE IF NOT EXISTS teacher_class_subject_assignments (
     CONSTRAINT fk_tcs_subject FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ==============================
--- Class Subject Planner
--- ==============================
 CREATE TABLE IF NOT EXISTS class_subject_plans (
     id INT AUTO_INCREMENT PRIMARY KEY,
     class_id INT NOT NULL,
@@ -477,8 +474,6 @@ CREATE TABLE IF NOT EXISTS class_subject_plans (
     single_date DATE NULL,
     range_start DATE NULL,
     range_end DATE NULL,
-    assignment_deadline DATE NULL,
-    quiz_deadline DATE NULL,
     status ENUM('active','archived') NOT NULL DEFAULT 'active',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -490,22 +485,18 @@ CREATE TABLE IF NOT EXISTS class_subject_plans (
     CONSTRAINT fk_csp_teacher_assignment FOREIGN KEY (teacher_assignment_id) REFERENCES teacher_class_subject_assignments(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Upgrade path: ensure new deadline columns exist on existing databases
+-- Upgrade path: remove legacy assignment/quiz deadline columns from planner
 ALTER TABLE class_subject_plans
-  ADD COLUMN IF NOT EXISTS assignment_deadline DATE NULL AFTER range_end,
-  ADD COLUMN IF NOT EXISTS quiz_deadline DATE NULL AFTER assignment_deadline;
+  DROP COLUMN IF EXISTS assignment_deadline,
+  DROP COLUMN IF EXISTS quiz_deadline;
 
 CREATE TABLE IF NOT EXISTS class_subject_plan_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     plan_id INT NOT NULL,
-    item_type ENUM('syllabus','assignment','quiz') NOT NULL,
-    assignment_number INT NULL,
-    quiz_number INT NULL,
+    item_type ENUM('syllabus','general') NOT NULL DEFAULT 'syllabus',
     title VARCHAR(255) NULL,
     topic VARCHAR(255) NULL,
     description TEXT NULL,
-    total_marks INT NULL,
-    weight_percent DECIMAL(6,2) NULL,
     scheduled_for DATETIME NULL,
     scheduled_until DATETIME NULL,
     status ENUM('scheduled','ready_for_verification','covered','deferred') NOT NULL DEFAULT 'scheduled',
@@ -515,19 +506,20 @@ CREATE TABLE IF NOT EXISTS class_subject_plan_items (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_cspi_plan (plan_id),
-    INDEX idx_cspi_assignment_num (assignment_number),
-    INDEX idx_cspi_quiz_num (quiz_number),
+    INDEX idx_cspi_type (item_type),
     INDEX idx_cspi_status (status),
     INDEX idx_cspi_schedule (scheduled_for),
     CONSTRAINT fk_cspi_plan FOREIGN KEY (plan_id) REFERENCES class_subject_plans(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Upgrade: ensure new number columns exist on existing databases
+-- Upgrade: remove legacy assignment/quiz metadata previously stored in planner items
 ALTER TABLE class_subject_plan_items
-  ADD COLUMN IF NOT EXISTS assignment_number INT NULL AFTER item_type,
-  ADD COLUMN IF NOT EXISTS quiz_number INT NULL AFTER assignment_number,
-  ADD INDEX IF NOT EXISTS idx_cspi_assignment_num (assignment_number),
-  ADD INDEX IF NOT EXISTS idx_cspi_quiz_num (quiz_number);
+  DROP COLUMN IF EXISTS assignment_number,
+  DROP COLUMN IF EXISTS quiz_number,
+  DROP COLUMN IF EXISTS total_marks,
+  DROP COLUMN IF EXISTS weight_percent,
+  DROP INDEX IF EXISTS idx_cspi_assignment_num,
+  DROP INDEX IF EXISTS idx_cspi_quiz_num;
 
 CREATE TABLE IF NOT EXISTS class_subject_plan_sessions (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -541,6 +533,60 @@ CREATE TABLE IF NOT EXISTS class_subject_plan_sessions (
     INDEX idx_csps_plan_item (plan_item_id),
     INDEX idx_csps_status (status),
     CONSTRAINT fk_csps_plan_item FOREIGN KEY (plan_item_id) REFERENCES class_subject_plan_items(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ==============================
+-- Class Assignments (detached from planner)
+-- ==============================
+CREATE TABLE IF NOT EXISTS class_assignments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    class_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    session_id INT NULL,
+    teacher_user_id INT NULL,
+    created_by_user_id INT NULL,
+    assignment_number INT NULL,
+    assignment_name VARCHAR(255) NOT NULL,
+    redline TEXT NULL,
+    description TEXT NULL,
+    deadline DATETIME NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ca_class_subject (class_id, subject_id),
+    INDEX idx_ca_assignment_number (assignment_number),
+    INDEX idx_ca_session (session_id),
+    CONSTRAINT fk_ca_class FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ca_subject FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_ca_session FOREIGN KEY (session_id) REFERENCES class_subject_plan_sessions(id) ON DELETE SET NULL,
+    CONSTRAINT fk_ca_teacher FOREIGN KEY (teacher_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_ca_creator FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ==============================
+-- Class Quizzes (detached from planner)
+-- ==============================
+CREATE TABLE IF NOT EXISTS class_quizzes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    class_id INT NOT NULL,
+    subject_id INT NOT NULL,
+    session_id INT NULL,
+    teacher_user_id INT NULL,
+    created_by_user_id INT NULL,
+    quiz_number INT NULL,
+    quiz_name VARCHAR(255) NOT NULL,
+    redline TEXT NULL,
+    description TEXT NULL,
+    deadline DATETIME NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_cq_class_subject (class_id, subject_id),
+    INDEX idx_cq_quiz_number (quiz_number),
+    INDEX idx_cq_session (session_id),
+    CONSTRAINT fk_cq_class FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cq_subject FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_cq_session FOREIGN KEY (session_id) REFERENCES class_subject_plan_sessions(id) ON DELETE SET NULL,
+    CONSTRAINT fk_cq_teacher FOREIGN KEY (teacher_user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_cq_creator FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Helper procedures to upsert subjects and map them to a class
