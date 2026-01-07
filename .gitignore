@@ -43,3 +43,45 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local environment files
+.env
+.env.local
+*.key
+*.pem
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build and log files
+*.log
+*.png
+*.jpg
+*.jpeg
+
+# Backend specific
+backend/uploads/
+backend/vendor/
+backend/local.properties
+backend/.env
+backend/node_modules/
+backend/*.log
+backend/composer.lock
+backend/hello_world.xlsx
+backend/CREDENTIALS.md
+backend/migrations/
+backend/.DS_Store
+
+# Sensitive files
+CREDENTIALS.md
+*.xlsx
+*.key
+*.pem
