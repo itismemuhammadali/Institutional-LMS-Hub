@@ -593,7 +593,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 TextButton(
                   onPressed: () async {
-                    final result = await FilePicker.platform.pickFiles(
+                    final result = await FilePicker.pickFiles(
                       withData: true,
                       type: FileType.image,
                     );

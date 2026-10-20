@@ -11,29 +11,7 @@ import 'dart:developer' show log;
 class ApiService {
   // Base URL for the API - automatically detect platform
   static String get baseUrl {
-    // XAMPP/Apache mapping
-    // - Web/Desktop/iOS simulator use localhost
-    // - Android emulator uses 10.0.2.2 to reach host
-    // - Physical devices use the LAN IP of the host machine
-    if (kIsWeb) {
-      return 'http://localhost/backend/api.php';
-    }
-
-    try {
-      if (Platform.isAndroid) {
-        return 'http://10.0.2.2/backend/api.php';
-      }
-      if (Platform.isIOS ||
-          Platform.isMacOS ||
-          Platform.isWindows ||
-          Platform.isLinux) {
-        return 'http://localhost/backend/api.php';
-      }
-    } catch (_) {
-      // Fallback if Platform is unavailable
-    }
-    // Physical devices on same Wi‑Fi: use your PC's LAN IP
-    return 'http://192.168.18.30/backend/api.php';
+    return 'https://cratercode.com/backend/api.php';
   }
 
   static Future<Map<String, dynamic>> saveClassQuiz({

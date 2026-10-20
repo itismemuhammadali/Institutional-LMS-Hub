@@ -890,7 +890,7 @@ class _AssessmentsManageScreenState extends State<AssessmentsManageScreen>
     }
 
     try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: false);
+      final result = await FilePicker.pickFiles(allowMultiple: false);
       if (result == null || result.files.isEmpty) {
         return;
       }

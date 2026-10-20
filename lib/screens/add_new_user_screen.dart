@@ -126,7 +126,7 @@ class _AddNewUserScreenState extends State<AddNewUserScreen> with TickerProvider
         Future<void> selectFile(StateSetter setModalState) async {
           try {
             inlineError = null;
-            final result = await FilePicker.platform.pickFiles(
+            final result = await FilePicker.pickFiles(
               type: FileType.image,
               allowMultiple: false,
               withData: true,

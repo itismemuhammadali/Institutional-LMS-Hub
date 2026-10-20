@@ -411,7 +411,7 @@ class _AdminDuesScreenState extends State<AdminDuesScreen> {
 
   Future<void> _pickChallanFile(StateSetter setState) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'],
         withData: true,

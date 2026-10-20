@@ -1754,7 +1754,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     try {
       _dlog('Launching file picker. kIsWeb=$kIsWeb');
       // Pick a file
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'jpg', 'jpeg', 'png'],
         allowMultiple: false,

@@ -3414,9 +3414,9 @@ function saveCourseSummary($pdo, $input, $requester) {
 
 // Database configuration
 $host = 'localhost';
-$dbname = 'flutter_api';
-$username = 'root';
-$password = '';
+$dbname = 'worlifwz_flutter_api';
+$username = 'worlifwz_Muhammad_Ali';
+$password = 'AuN(m0A*q$!R;SS_';
 
 try {
     // Create PDO connection
@@ -3431,7 +3431,6 @@ try {
 // ======================
 // JWT Auth Configuration
 // ======================
-// In production, move this to a non-public config include and keep it secret.
 $JWT_SECRET = 'change_this_secret_in_production_please';
 
 function base64url_encode($data) {

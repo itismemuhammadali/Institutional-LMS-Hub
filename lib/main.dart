@@ -33,14 +33,14 @@ class StudentPortalApp extends StatelessWidget {
       ),
       // Subtle global shadow color for light mode widgets
       shadowColor: Colors.black.withValues(alpha: 0.08),
-      pageTransitionsTheme: const PageTransitionsTheme(
+      pageTransitionsTheme: PageTransitionsTheme(
         builders: <TargetPlatform, PageTransitionsBuilder>{
-          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.fuchsia: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.android: const FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: const FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: const FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: const FadeUpwardsPageTransitionsBuilder(),
         },
       ),
       // Pearl white background for all screens
@@ -145,14 +145,14 @@ class StudentPortalApp extends StatelessWidget {
         onSecondary: Color(0xFF000000),
         onSurface: Color(0xFF60A5FA),
       ),
-      pageTransitionsTheme: const PageTransitionsTheme(
+      pageTransitionsTheme: PageTransitionsTheme(
         builders: <TargetPlatform, PageTransitionsBuilder>{
-          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.fuchsia: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.android: const FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.macOS: FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: const FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: const FadeUpwardsPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: const FadeUpwardsPageTransitionsBuilder(),
         },
       ),
       scaffoldBackgroundColor: const Color(0xFF000000),
