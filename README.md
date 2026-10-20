@@ -1,4 +1,8 @@
-# 🎓 Institutional LMS/CMS Hub — Enterprise Academic Management & Role-Based Education Portal
+# 🎓 Institutional LMS & CMS Hub — Enterprise Academic ERP & Multi-Tenant Portal
+
+<p align="center">
+  <img src="assets/branding/cratercode_logo.png" alt="CraterCode LMS Logo" width="160" style="border-radius: 24px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);" />
+</p>
 
 [![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.x-0175C2?style=for-the-badge&logo=dart&logoColor=white)](https://dart.dev)
